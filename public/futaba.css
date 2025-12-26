@@ -1,0 +1,169 @@
+/* Dark Void Classic Style */
+
+body {
+    background-color: #0c0c0c; /* Near black */
+    color: #d1d1d1;           /* Off-white text */
+    font-family: Arial, Helvetica, sans-serif;
+    margin: 0;
+    padding: 20px;
+}
+
+.container {
+    max-width: 95%;
+    margin: auto;
+}
+
+h1 {
+    text-align: center;
+    color: #ff3e3e; /* Electric red */
+    letter-spacing: -2px;
+    font-size: 2em;
+    text-shadow: 2px 2px 0px #5f0000;
+}
+
+/* Posting Form */
+form {
+    background-color: #1a1a1a; /* Dark gray header */
+    border: 1px solid #333;
+    display: table;
+    margin: 10px auto;
+    padding: 10px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+}
+
+form input[type="text"], form textarea {
+    background-color: #262626;
+    color: #eee;
+    border: 1px solid #444;
+    font-family: inherit;
+    margin: 2px;
+    padding: 4px;
+}
+
+form input[type="text"]:focus, form textarea:focus {
+    border-color: #ff3e3e;
+    outline: none;
+}
+
+form input[type="submit"] {
+    background-color: #333;
+    color: #fff;
+    border: 1px solid #555;
+    margin-left: 2px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+form input[type="submit"]:hover {
+    background-color: #ff3e3e;
+    border-color: #fff;
+}
+
+/* Thread and Post Layout */
+.post {
+    display: table;
+    background-color: #161616; /* Deep charcoal */
+    border: 1px solid #2a2a2a;
+    border-left: 3px solid #ff3e3e; /* Accent strip */
+    padding: 10px;
+    margin: 10px 0;
+    width: auto;
+    min-width: 400px;
+    max-width: 100%;
+}
+
+/* Highlighting Logic - Dark Version */
+@keyframes highlight-fade {
+    0% { background: #3a3a00; border-color: #ffff00; } /* Neon yellow alert */
+    100% { background: #161616; border-color: #2a2a2a; }
+}
+
+.post:target {
+    animation: highlight-fade 3s ease-out;
+}
+
+.meta {
+    font-size: 0.9em;
+    margin-bottom: 8px;
+    color: #888;
+}
+
+.name {
+    color: #00ff7f; /* Spring green (high visibility) */
+    font-weight: bold;
+}
+
+.trip-std {
+    color: #00ce67;
+}
+
+.trip-sec {
+    color: #ff6e27; /* Neon orange */
+    font-weight: bold;
+}
+
+.date, .id {
+    color: #666;
+}
+
+/* Post Body */
+.content {
+    margin: 15px 20px 10px 20px;
+    color: #e0e0e0;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+/* Greentext logic for dark mode */
+.greentext {
+    color: #b3fb4a !important; /* Bright lime */
+}
+
+/* Tags */
+.tags {
+    margin-top: 10px;
+    border-top: 1px solid #333;
+    padding-top: 5px;
+}
+
+.tag {
+    font-size: 0.75em;
+    background-color: #333;
+    color: #aaa;
+    padding: 2px 6px;
+    text-decoration: none;
+    border: 1px solid #444;
+    border-radius: 2px;
+    margin-right: 5px;
+}
+
+.tag:hover {
+    background-color: #ff3e3e;
+    color: #fff;
+    border-color: #fff;
+}
+
+/* RSS & Nav Links */
+a {
+    color: #58a6ff; /* Modern blue */
+    text-decoration: none;
+}
+
+a:hover {
+    color: #ff3e3e;
+    text-decoration: underline;
+}
+
+/* Admin Styling */
+.admin-ctrl {
+    background: #222 !important;
+    border: 1px solid #444 !important;
+    color: #f00;
+}
+
+.admin-edit-note {
+    font-style: italic;
+    font-size: 0.8em;
+    color: #555;
+}

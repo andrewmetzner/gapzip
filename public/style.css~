@@ -1,0 +1,231 @@
+/* public/style.css */
+
+:root {
+    /* Color Palette */
+    --bg-color: #0c0c0c;
+    --container-bg: #161616;
+    --thread-bg: #1a1a1a;
+    --post-bg: #1d1d1d;
+    --border-color: #333;
+    --accent-color: #ff3e3e;
+    --text-main: #d1d1d1;
+    --text-muted: #888;
+    --text-subject: #ff6e27;
+    --text-name: #00ff7f;
+    --text-greentext: #b3fb4a;
+    --link-color: #79bac1;       /* Lighter Blue */
+    --link-hover: #ff3e3e;       /* Red highlight */
+    --highlight-bg: #3a3a00;
+    
+    /* Monospace Font Stack */
+    --font-mono: 'Courier New', Courier, 'Lucida Sans Typewriter', 'Lucida Console', monospace;
+}
+
+/* Base Styles */
+body {
+    background-color: var(--bg-color);
+    color: var(--text-main);
+    font-family: var(--font-mono); /* Switched to Monospace */
+    margin: 0;
+    line-height: 1.4;
+    font-size: 14px;
+}
+
+/* Ensure form inputs and textareas use the same monospace font */
+input, textarea, select, button {
+    font-family: var(--font-mono);
+    background-color: #000;
+    color: var(--text-main);
+    border: 1px solid var(--border-color);
+    padding: 5px;
+}
+
+.container {
+    max-width: 950px;
+    margin: 20px auto;
+    padding: 0 15px;
+}
+
+/* ASCII Header Styling */
+.board-ascii {
+    display: block;
+    white-space: pre;
+    /* Use left alignment so characters stack perfectly */
+    text-align: left; 
+    /* This centers the container itself while keeping text left-aligned */
+    margin: 20px auto;
+    width: fit-content; 
+    
+    /* Your preferred colors and styling */
+    color: var(--text-subject); /* Keeps it orange */
+    font-size: 11px;
+    line-height: 1.1;
+    padding: 20px;
+    background: #050505;
+    border: 1px solid #222;
+    overflow-x: auto;
+    
+    /* Force monospace to prevent shifting */
+    font-family: var(--font-mono) !important; 
+}
+
+/* Navigation & Info Headers */
+.top-nav {
+    text-align: right;
+    font-size: 0.85em;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 20px;
+}
+
+.home-top-links {
+    text-align: center;
+    margin-bottom: 15px;
+}
+
+.thread-info {
+    font-size: 1.1em;
+    font-weight: bold;
+    color: var(--text-muted);
+    margin-bottom: 15px;
+    padding-left: 5px;
+}
+
+/* Links & Quotes - No Purple */
+a, a:visited, .quote-btn, .rss-link {
+    color: var(--link-color);
+    text-decoration: none;
+    cursor: pointer;
+}
+
+a:hover, .quote-btn:hover, .rss-link:hover {
+    color: var(--link-hover);
+    text-decoration: underline;
+}
+
+/* Thread Container */
+.thread-container {
+    background: var(--thread-bg);
+    border: 1px solid var(--border-color);
+    padding: 15px;
+    margin-bottom: 25px;
+    border-radius: 4px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+}
+
+/* Post Styling */
+.post {
+    padding: 12px;
+    margin: 8px 0;
+    background: var(--post-bg);
+    border: 1px solid var(--border-color);
+    border-left: 4px solid var(--accent-color);
+    position: relative;
+    transition: background 0.2s ease;
+}
+
+.reply {
+    margin-left: 35px;
+    display: table; 
+}
+
+/* Post Meta / Header */
+.post-meta {
+    font-size: 0.9em;
+    margin-bottom: 8px;
+    color: var(--text-muted);
+}
+
+.subject { color: var(--text-subject); font-weight: bold; margin-right: 5px; }
+.name { color: var(--text-name); font-weight: bold; }
+
+/* Body Content */
+.content {
+    font-size: 0.95em;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.greentext {
+    color: var(--text-greentext);
+}
+
+/* Backlinks (Replies: >>5 >>6) */
+.backlinks {
+    margin-top: 10px;
+    font-size: 0.8em;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.reflink {
+    font-weight: bold;
+    margin-right: 4px;
+}
+
+/* Highlighting Animation for >>reflinks */
+@keyframes highlight-fade {
+    0% { background: var(--highlight-bg); outline: 1px solid yellow; }
+    100% { background: var(--post-bg); }
+}
+
+.post:target {
+    animation: highlight-fade 3s ease-out;
+}
+
+/* Tags & Admin UI */
+.tags-container {
+    margin-top: 10px;
+    padding-top: 5px;
+    border-top: 1px solid #222;
+}
+
+.tag-label { font-size: 0.8em; color: var(--text-muted); }
+
+.tag {
+    background: #333;
+    color: var(--text-muted) !important;
+    padding: 2px 6px;
+    font-size: 0.8em;
+    border-radius: 3px;
+    margin: 0 2px;
+}
+
+.tag:hover {
+    background: var(--accent-color);
+    color: white !important;
+}
+
+.admin-tools {
+    margin-left: 10px;
+    font-size: 0.85em;
+}
+
+.admin-del { color: #ff4444 !important; }
+.admin-ban { color: #ffa500 !important; }
+
+/* Admin IP Tag */
+.ip-tag {
+    color: var(--text-name);
+    background: #222;
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 0.9em;
+}
+
+/* Admin Tag Input */
+.admin-tag-form { display: inline-block; margin-left: 15px; }
+.admin-tag-input { 
+    background: #000; 
+    color: #0f0; 
+    border: 1px solid #444; 
+    font-size: 0.8em;
+    padding: 2px;
+}
+.admin-tag-submit { 
+    background: #444; 
+    color: #fff; 
+    border: none; 
+    cursor: pointer; 
+    font-size: 0.8em;
+}

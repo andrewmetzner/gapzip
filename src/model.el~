@@ -1,0 +1,48 @@
+;;; model.el --- Logic and Data Management
+(require 'subr-x)
+(require 'cl-lib)
+
+(defvar board-threads nil)
+(defvar board-post-count 0)
+(defvar board-root nil)
+(defvar board-banned-ips nil)
+
+(defun board-save ()
+  (let ((save-path (expand-file-name "data/board-data.el" board-root)))
+    (unless (file-exists-p (file-name-directory save-path))
+      (make-directory (file-name-directory save-path) t))
+    (with-temp-file save-path
+      (let ((print-length nil) (print-level nil) (print-quoted t))
+        (prin1 (list :count board-post-count :threads board-threads :bans board-banned-ips) (current-buffer))))))
+
+(defun board-load ()
+  (let ((load-path (expand-file-name "data/board-data.el" board-root)))
+    (if (file-exists-p load-path)
+        (with-temp-buffer
+          (insert-file-contents load-path)
+          (condition-case nil
+              (let ((data (read (current-buffer))))
+                (setq board-post-count (plist-get data :count))
+                (setq board-threads (plist-get data :threads))
+                (setq board-banned-ips (plist-get data :bans)))
+            (error (setq board-threads nil board-post-count 0))))
+      (setq board-threads nil board-post-count 0))))
+
+(defun board-classic-tripcode (pass)
+  (let* ((perl-code "use Encode qw(encode); my $pw = substr($ARGV[0], 0, 8); my $sjv = encode('shiftjis', $pw); my $salt = substr($sjv . 'H.', 1, 2); $salt =~ tr/:;<=>?@[\\\\\\\]^_`/ABCDEFGabcdef/; $salt =~ s/[^.-z]/./g; print substr(crypt($sjv, $salt), -10);")
+         (result (with-temp-buffer
+                   (call-process "perl" nil t nil "-MEncode" "-e" perl-code "--" pass)
+                   (string-trim (buffer-string)))))
+    result))
+
+(defun generate-tripcode (input)
+  (let ((clean-input (replace-regexp-in-string "◆" "&#9671;" input)))
+    (cond
+     ((string-match "^\\([^#]*\\)#\\(.+\\)$" clean-input)
+      (let* ((name (match-string 1 clean-input))
+             (pass (match-string 2 clean-input))
+             (trip (board-classic-tripcode pass)))
+        (list (if (string-empty-p name) "Spy" name) trip)))
+     (t (list (if (string-empty-p clean-input) "Spy" clean-input) nil)))))
+
+(provide 'model)

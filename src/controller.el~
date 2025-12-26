@@ -1,0 +1,143 @@
+;;; controller.el --- Post & Admin Logic
+(require 'model)
+
+(defun board-get-ip (proc)
+  (let ((contact (process-contact proc t))) 
+    (if (plist-get contact :local) "127.0.0.1" (format "%s" (car contact)))))
+
+(defun board-is-admin-p (proc args)
+  (let ((cookie (cadr (assoc "Cookie" args)))) 
+    (and cookie (string-match (format "session=%s" (regexp-quote board-admin-password)) cookie))))
+
+;; --- ADMIN ACTIONS ---
+
+(defun board-admin-dashboard-route (proc path query args)
+  (if (not (board-is-admin-p proc args)) 
+      (httpd-error proc 403) 
+    (with-httpd-buffer proc "text/html" 
+      (insert (render-header "Admin Dashboard" t)) 
+      (insert-board-ascii) 
+      (insert "<h2>Banned IPs</h2><ul>")
+      (if board-banned-ips
+          (dolist (ip board-banned-ips)
+            (insert (format "<li>%s <a href='/admin/unban?ip=%s'>[Unban]</a></li>" ip ip)))
+        (insert "<li>No bans found.</li>"))
+      (insert "</ul><hr><a href='/home'>Back to Home</a></body></html>"))))
+
+(defun board-admin-delete-route (proc path query args)
+  (if (not (board-is-admin-p proc args)) 
+      (httpd-error proc 403) 
+    (let* ((id-param (cadr (assoc "id" query)))
+           (id (when id-param (string-to-number id-param))))
+      (when id
+        (let ((thread (cl-find-if (lambda (x) (= (plist-get (plist-get x :op) :id) id)) board-threads)))
+          (if thread
+              (setq board-threads (delete thread board-threads))
+            (dolist (tt board-threads)
+              (plist-put tt :replies 
+                         (cl-remove-if (lambda (r) (= (plist-get r :id) id)) 
+                                       (plist-get tt :replies))))))
+        (board-save)
+        (httpd-redirect proc "/home")))))
+
+(defun board-admin-ban-route (proc path query args)
+  (if (not (board-is-admin-p proc args)) 
+      (httpd-error proc 403) 
+    (let ((ip (cadr (assoc "ip" query)))) 
+      (when (and ip (not (member ip board-banned-ips)))
+        (push ip board-banned-ips) 
+        (board-save))
+      (httpd-redirect proc "/home"))))
+
+(defun board-admin-unban-route (proc path query args)
+  (if (not (board-is-admin-p proc args)) 
+      (httpd-error proc 403) 
+    (let ((ip (cadr (assoc "ip" query))))
+      (setq board-banned-ips (delete ip board-banned-ips))
+      (board-save)
+      (httpd-redirect proc "/admin/dashboard"))))
+
+(defun board-admin-logout-route (proc path query args)
+  (httpd-send-header proc "text/html" 302 
+                     :Location "/home" 
+                     :Set-Cookie "session=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT")
+  (process-send-string proc ""))
+
+;; --- POST HANDLING ---
+
+;; --- UPDATED board-handle-post IN controller.el ---
+(defun board-handle-post (proc args)
+  (let ((ip (board-get-ip proc)))
+    (if (member ip board-banned-ips) 
+        ;; CUSTOM BANNED PAGE WITH IMAGE
+        (with-httpd-buffer proc "text/html"
+          (insert "<html><body style='background:black;color:red;text-align:center;padding-top:50px;font-family:sans-serif;'>")
+          (insert "<h1>BANNED!</h1>")
+          ;; This calls hello.jpg from the root of your webserver
+          (insert "<img src='/hello.jpg' style='max-width:800px; border: 5px solid red;'><br>")
+          (insert (format "<p style='font-size:1.5em;'>Your IP (%s) has been restricted.</p>" ip))
+          (insert "</body></html>"))
+      
+      ;; ... [Rest of your post handling logic remains exactly the same] ...
+      (let* ((comment (board-get-arg args "comment")) 
+             (subj (board-get-arg args "subject")) 
+             (tags-raw (board-get-arg args "tags")) 
+             (name-raw (or (board-get-arg args "name") "Anonymous"))
+             (resto (board-get-arg args "resto")) 
+             (is-reply (and resto (not (string-empty-p (string-trim resto))))))
+        (when (and comment (not (string-empty-p (string-trim comment))))
+          (setq board-post-count (1+ board-post-count))
+          (let* ((nt (generate-tripcode name-raw))
+                 (tags (if is-reply nil 
+                         (if (or (null tags-raw) (string-empty-p (string-trim tags-raw))) 
+                             '("shitpost") 
+                           (mapcar (lambda (s) (downcase (string-trim s))) (split-string tags-raw "," t)))))
+                 (new (list :id board-post-count :name (car nt) :trip (cadr nt) :subject (or subj "") :body comment :timestamp (format-time-string "%Y-%m-%d %H:%M:%S") :ip ip :tags tags)))
+            (if is-reply 
+                (let ((p (cl-find-if (lambda (tt) (= (plist-get (plist-get tt :op) :id) (string-to-number resto))) board-threads))) 
+                  (when p (plist-put p :replies (append (plist-get p :replies) (list new)))))
+              (push (list :op new :replies nil) board-threads)) 
+            (board-save)))
+        (let ((target (if is-reply (format "/thread?id=%s" resto) "/home")))
+          (httpd-send-header proc "text/html" 302 
+                             :Location target 
+                             :Set-Cookie (format "preferred_name=%s; Path=/; Max-Age=31536000" 
+                                                 (url-hexify-string name-raw)))
+          (process-send-string proc ""))))))
+
+(defun board-admin-update-tags-route (proc path query args)
+  (if (not (board-is-admin-p proc args)) 
+      (httpd-error proc 403)
+    (let* ((id (string-to-number (or (board-get-arg args "id") "0")))
+           (tags-raw (board-get-arg args "tags"))
+           (redir (board-get-arg args "redirect"))
+           (thread (cl-find-if (lambda (x) (= (plist-get (plist-get x :op) :id) id)) board-threads)))
+      (when thread
+        (let* ((op (plist-get thread :op))
+               (new-tags (mapcar (lambda (s) (downcase (string-trim s))) 
+                                 (split-string tags-raw "," t))))
+          (plist-put op :tags new-tags)
+          (board-save)))
+      ;; Smart redirect based on where the admin was
+      (let ((target (if (string= redir "home") "/home" (format "/thread?id=%d" id))))
+        (httpd-redirect proc target)))))
+
+(defun board-admin-rename-tag-global-route (proc path query args)
+  "Rename a tag across all threads in the database."
+  (if (not (board-is-admin-p proc args))
+      (httpd-error proc 403)
+    (let* ((old-tag (downcase (string-trim (or (board-get-arg args "old") ""))))
+           (new-tag (downcase (string-trim (or (board-get-arg args "new") "")))))
+      (unless (or (string-empty-p old-tag) (string-empty-p new-tag))
+        (dolist (tt board-threads)
+          (let* ((op (plist-get tt :op))
+                 (tags (plist-get op :tags)))
+            (when (member old-tag tags)
+              ;; Replace the old tag with the new one in the list
+              (setf (plist-get op :tags)
+                    (mapcar (lambda (tag) (if (string= tag old-tag) new-tag tag)) tags)))))
+        (board-save))
+      ;; Redirect to the new tag page
+      (httpd-redirect proc (format "/tags?name=%s" (url-hexify-string new-tag))))))
+
+(provide 'controller)
