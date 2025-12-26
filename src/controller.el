@@ -10,7 +10,6 @@
            ((consp remote) (car remote))
            (t "127.0.0.1")))
          (forwarded-ip (and args (board-get-forwarded-ip args))))
-    ;; Trust XFF only if direct IP is localhost (proxy)
     (if (and forwarded-ip (string= direct-ip "127.0.0.1"))
         forwarded-ip
       direct-ip)))
@@ -80,8 +79,45 @@
 
 ;; --- POST HANDLING ---
 
-;; --- UPDATED board-handle-post IN controller.el ---
+;; ;; --- UPDATED board-handle-post IN controller.el ---
+;; (defun board-handle-post (proc args)
+;;   (let ((ip (board-get-ip proc args)))
+;;     (if (member ip board-banned-ips) 	
+;;         (with-httpd-buffer proc "text/html"
+;;           (insert "<html><body style='background:black;color:red;text-align:center;padding-top:50px;font-family:sans-serif;'>")
+;;           (insert "<h1>BANNED!</h1>")
+;;           (insert "<img src='/hello.jpg' style='max-width:800px; border: 5px solid red;'><br>")
+;;           (insert (format "<p style='font-size:1.5em;'>Your IP (%s) has been restricted.</p>" ip))
+;;           (insert "</body></html>"))
+      
+;;       (let* ((comment (board-get-arg args "comment")) 
+;;              (subj (board-get-arg args "subject")) 
+;;              (tags-raw (board-get-arg args "tags")) 
+;;              (name-raw (or (board-get-arg args "name") "Anonymous"))
+;;              (resto (board-get-arg args "resto")) 
+;;              (is-reply (and resto (not (string-empty-p (string-trim resto))))))
+;;         (when (and comment (not (string-empty-p (string-trim comment))))
+;;           (setq board-post-count (1+ board-post-count))
+;;           (let* ((nt (generate-tripcode name-raw))
+;;                  (tags (if is-reply nil 
+;;                          (if (or (null tags-raw) (string-empty-p (string-trim tags-raw))) 
+;;                              '("shitpost") 
+;;                            (mapcar (lambda (s) (downcase (string-trim s))) (split-string tags-raw "," t)))))
+;;                  (new (list :id board-post-count :name (car nt) :trip (cadr nt) :subject (or subj "") :body comment :timestamp (format-time-string "%Y-%m-%d %H:%M:%S") :ip ip :tags tags)))
+;;             (if is-reply 
+;;                 (let ((p (cl-find-if (lambda (tt) (= (plist-get (plist-get tt :op) :id) (string-to-number resto))) board-threads))) 
+;;                   (when p (plist-put p :replies (append (plist-get p :replies) (list new)))))
+;;               (push (list :op new :replies nil) board-threads)) 
+;;             (board-save)))
+;;         (let ((target (if is-reply (format "/thread?id=%s" resto) "/home")))
+;;           (httpd-send-header proc "text/html" 302 
+;;                              :Location target 
+;;                              :Set-Cookie (format "preferred_name=%s; Path=/; Max-Age=31536000" 
+;;                                                  (url-hexify-string name-raw)))
+;;           (process-send-string proc ""))))))
+
 (defun board-handle-post (proc args)
+  "Handle posting a new thread or a reply, with bump-on-reply logic."
   (let ((ip (board-get-ip proc args)))
     (if (member ip board-banned-ips) 	
         (with-httpd-buffer proc "text/html"
@@ -90,7 +126,7 @@
           (insert "<img src='/hello.jpg' style='max-width:800px; border: 5px solid red;'><br>")
           (insert (format "<p style='font-size:1.5em;'>Your IP (%s) has been restricted.</p>" ip))
           (insert "</body></html>"))
-      
+
       (let* ((comment (board-get-arg args "comment")) 
              (subj (board-get-arg args "subject")) 
              (tags-raw (board-get-arg args "tags")) 
@@ -104,18 +140,31 @@
                          (if (or (null tags-raw) (string-empty-p (string-trim tags-raw))) 
                              '("shitpost") 
                            (mapcar (lambda (s) (downcase (string-trim s))) (split-string tags-raw "," t)))))
-                 (new (list :id board-post-count :name (car nt) :trip (cadr nt) :subject (or subj "") :body comment :timestamp (format-time-string "%Y-%m-%d %H:%M:%S") :ip ip :tags tags)))
-            (if is-reply 
-                (let ((p (cl-find-if (lambda (tt) (= (plist-get (plist-get tt :op) :id) (string-to-number resto))) board-threads))) 
-                  (when p (plist-put p :replies (append (plist-get p :replies) (list new)))))
-              (push (list :op new :replies nil) board-threads)) 
+                 (new (list :id board-post-count
+                            :name (car nt)
+                            :trip (cadr nt)
+                            :subject (or subj "")
+                            :body comment
+                            :timestamp (format-time-string "%Y-%m-%d %H:%M:%S")
+                            :ip ip
+                            :tags tags)))
+            ;; BUMP
+            (if is-reply
+                (let* ((tid (string-to-number resto))
+                       (thread (cl-find-if (lambda (tt) (= (plist-get (plist-get tt :op) :id) tid)) board-threads)))
+                  (when thread
+                    (plist-put thread :replies (append (plist-get thread :replies) (list new)))
+                    (setq board-threads (cons thread (remove thread board-threads)))))
+              (push (list :op new :replies nil) board-threads))
             (board-save)))
+        
         (let ((target (if is-reply (format "/thread?id=%s" resto) "/home")))
           (httpd-send-header proc "text/html" 302 
                              :Location target 
                              :Set-Cookie (format "preferred_name=%s; Path=/; Max-Age=31536000" 
                                                  (url-hexify-string name-raw)))
           (process-send-string proc ""))))))
+
 
 (defun board-admin-update-tags-route (proc path query args)
   (if (not (board-is-admin-p proc args)) 

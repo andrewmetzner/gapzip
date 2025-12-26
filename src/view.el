@@ -22,7 +22,7 @@
 (defun render-header (title &optional is-admin feed-url)
   (format "<!DOCTYPE html><html><head>
            <meta charset='UTF-8'>
-           <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+           <meta name='viewport' content='width=device-width, initial-scale=0.7'>
            <title>%s</title>
            %s
            <link rel='stylesheet' href='/public/style.css'>

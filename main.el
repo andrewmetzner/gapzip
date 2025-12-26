@@ -10,6 +10,15 @@
 (require 'simple-httpd) (require 'model) (require 'view) (require 'controller)
 (defvar board-admin-password "secret123") (setq httpd-port 8080)
 
+(defvar board-threads-per-page 10)
+
+(defun board-paginate (items page per-page)
+  "Return sublist of ITEMS for PAGE (1-based)."
+  (let* ((page (max 1 page))
+         (start (* per-page (1- page)))
+         (end (min (length items) (+ start per-page))))
+    (cl-subseq items start end)))
+
 ;; --- ASCII ART HELPER ---
 (defun insert-board-ascii ()
   (insert (format "<pre class='board-ascii'>%s</pre>" board-ascii-art)))
@@ -69,15 +78,52 @@ x  |          |         |    |       |         |x
 
 ;; --- ROUTES ---
 
+;; (defun httpd/home (proc path query args)
+;;   (let ((admin (board-is-admin-p proc args))
+;;         (remembered-name (board-get-cookie-name args)))
+;;     (with-httpd-buffer proc "text/html" 
+;;       (insert (render-header "goatse.world" admin "/rss"))
+;;       (insert-board-ascii)
+;;       (insert (format "<h3></h3><form method='POST' action='/post-entry'><input name='name' placeholder='Name#Trip' value='%s'> <input name='subject' placeholder='Subject'><br><input name='tags' placeholder='Tags' style='width:345px;margin-top:5px;'><br><textarea name='comment' rows='4' style='width:345px;margin-top:5px;'></textarea><br><input type='submit' value='Create New Thread'></form><hr>" (board-escape-html remembered-name)))
+;;       (dolist (tt board-threads) (insert (render-thread-html tt nil admin))) 
+;;       (insert "</div></body></html>"))))
+
 (defun httpd/home (proc path query args)
-  (let ((admin (board-is-admin-p proc args))
-        (remembered-name (board-get-cookie-name args)))
-    (with-httpd-buffer proc "text/html" 
-      (insert (render-header "goatse.world" admin "/rss"))
-      (insert-board-ascii)
-      (insert (format "<h3></h3><form method='POST' action='/post-entry'><input name='name' placeholder='Name#Trip' value='%s'> <input name='subject' placeholder='Subject'><br><input name='tags' placeholder='Tags' style='width:345px;margin-top:5px;'><br><textarea name='comment' rows='4' style='width:345px;margin-top:5px;'></textarea><br><input type='submit' value='Create New Thread'></form><hr>" (board-escape-html remembered-name)))
-      (dolist (tt board-threads) (insert (render-thread-html tt nil admin))) 
-      (insert "</div></body></html>"))))
+  "Render the home page with paginated threads, max 10 pages."
+  (let* ((admin (board-is-admin-p proc args))
+         (remembered-name (board-get-cookie-name args))
+         (threads-per-page 5)
+         (total-threads (length board-threads))
+         (total-pages (ceiling (/ (float total-threads) threads-per-page)))
+         (max-pages (min total-pages 10))
+         (page-param (cadr (assoc "page" query)))
+         (page (if page-param (string-to-number page-param) 1)))
+    (setq page (max 1 (min page max-pages)))
+    (let* ((start (* (- page 1) threads-per-page))
+           (end (min total-threads (+ start threads-per-page)))
+           (page-threads (if (<= page max-pages) (cl-subseq board-threads start end) nil)))
+      (with-httpd-buffer proc "text/html"
+        (insert (render-header "goatse.world" admin "/rss"))
+        (insert-board-ascii)
+        (insert (format "<h3></h3><form method='POST' action='/post-entry'>
+                          <input name='name' placeholder='Name#Trip' value='%s'>
+                          <input name='subject' placeholder='Subject'><br>
+                          <input name='tags' placeholder='Tags' style='width:345px;margin-top:5px;'><br>
+                          <textarea name='comment' rows='4' style='width:345px;margin-top:5px;'></textarea><br>
+                          <input type='submit' value='Create New Thread'>
+                        </form><hr>" (board-escape-html remembered-name)))
+        (if page-threads
+            (dolist (tt page-threads) (insert (render-thread-html tt nil admin)))
+          (insert "<div><a href='/home'>[Back]</a></div><hr>Not found"))
+        (when (> max-pages 1)
+          (insert "<div class='pagination'>Pages: ")
+          (dotimes (i max-pages)
+            (let ((p (1+ i)))
+              (insert (if (= p page)
+                          (format "<b>[%d]</b> " p)
+                        (format "<a href='/home?page=%d'>[%d]</a> " p p)))))
+          (insert "</div>"))
+        (insert "</div></body></html>")))))
 
 (defun httpd/thread (proc path query args)
   (let* ((id-param (cadr (assoc "id" query)))
@@ -99,35 +145,83 @@ x  |          |         |    |       |         |x
 ;; --- TAGS & TAG RSS ---
 
 (defun httpd/tags (proc path query args)
+  "Render threads filtered by tag with pagination, max 10 pages."
   (let* ((tag-raw (cadr (assoc "name" query)))
          (tag-name (if tag-raw (url-unhex-string tag-raw) ""))
          (admin (board-is-admin-p proc args))
-         (tag-rss-url (format "/tags/rss?name=%s" (url-hexify-string tag-name)))
-         (filtered (cl-remove-if-not 
-                    (lambda (tt) (member (downcase tag-name) (plist-get (plist-get tt :op) :tags))) 
-                    board-threads)))
-    (with-httpd-buffer proc "text/html"
-      (insert (render-header (format "Tag: %s" tag-name) admin tag-rss-url))
-      (insert-board-ascii)
-      (insert (format "<h2>Tagged: %s</h2>" tag-name))
-      
-      ;; --- ADMIN RENAME FORM ---
-      (when admin
-        (insert (format "
-          <div class='admin-rename-box' style='background:#1a1a1a; padding:10px; border:1px solid red; margin-bottom:20px;'>
-            <form method='POST' action='/admin/rename-tag-global'>
-              <input type='hidden' name='old' value='%s'>
-              Admin: Rename this tag globally to: 
-              <input name='new' placeholder='new tag name' style='background:#000; color:#fff; border:1px solid #444;'>
-              <input type='submit' value='Apply to All Threads'>
-            </form>
-          </div>" tag-name)))
+         (threads-per-page 5)
+         (filtered (cl-remove-if-not
+                    (lambda (tt) (member (downcase tag-name) (plist-get (plist-get tt :op) :tags)))
+                    board-threads))
+         (total-threads (length filtered))
+         (total-pages (ceiling (/ (float total-threads) threads-per-page)))
+         (max-pages (min total-pages 10))
+         (page-param (cadr (assoc "page" query)))
+         (page (if page-param (string-to-number page-param) 1)))
+    (setq page (max 1 (min page max-pages)))
+    (let* ((start (* (- page 1) threads-per-page))
+           (end (min total-threads (+ start threads-per-page)))
+           (page-threads (if (<= page max-pages) (cl-subseq filtered start end) nil)))
+      (with-httpd-buffer proc "text/html"
+        (insert (render-header (format "Tag: %s" tag-name) admin (format "/tags/rss?name=%s" (url-hexify-string tag-name))))
+        (insert-board-ascii)
+        (insert "<a href='/home'>[Back]</a><hr>")
+        (insert (format "<h2>Tagged: %s</h2>" tag-name))
+        (when admin
+          (insert (format "
+            <div class='admin-rename-box' style='background:#1a1a1a; padding:10px; border:1px solid red; margin-bottom:20px;'>
+              <form method='POST' action='/admin/rename-tag-global'>
+                <input type='hidden' name='old' value='%s'>
+                Admin: Rename this tag globally to: 
+                <input name='new' placeholder='new tag name' style='background:#000; color:#fff; border:1px solid #444;'>
+                <input type='submit' value='Apply to All Threads'>
+              </form>
+            </div>" tag-name)))
+        (if page-threads
+            (dolist (tt page-threads) (insert (render-thread-html tt nil admin)))
+          (insert "<div><a href='/home'>[Back]</a></div><hr>Not found"))
+        (when (> max-pages 1)
+          (insert "<div class='pagination'>Pages: ")
+          (dotimes (i max-pages)
+            (let ((p (1+ i)))
+              (insert (if (= p page)
+                          (format "<b>[%d]</b> " p)
+                        (format "<a href='/tags?name=%s&page=%d'>[%d]</a> "
+                                (url-hexify-string tag-name) p p)))))
+          (insert "</div>"))
+        (insert "</div></body></html>")))))
 
-      (insert "<a href='/home'>[Back]</a><hr>")
-      (if filtered
-          (dolist (tt filtered) (insert (render-thread-html tt nil admin)))
-        (insert "<p>No threads found with this tag.</p>"))
-      (insert "</body></html>"))))
+
+;; (defun httpd/tags (proc path query args)
+;;   (let* ((tag-raw (cadr (assoc "name" query)))
+;;          (tag-name (if tag-raw (url-unhex-string tag-raw) ""))
+;;          (admin (board-is-admin-p proc args))
+;;          (tag-rss-url (format "/tags/rss?name=%s" (url-hexify-string tag-name)))
+;;          (filtered (cl-remove-if-not 
+;;                     (lambda (tt) (member (downcase tag-name) (plist-get (plist-get tt :op) :tags))) 
+;;                     board-threads)))
+;;     (with-httpd-buffer proc "text/html"
+;;       (insert (render-header (format "Tag: %s" tag-name) admin tag-rss-url))
+;;       (insert-board-ascii)
+;;       (insert (format "<h2>Tagged: %s</h2>" tag-name))
+      
+;;       ;; --- ADMIN RENAME FORM ---
+;;       (when admin
+;;         (insert (format "
+;;           <div class='admin-rename-box' style='background:#1a1a1a; padding:10px; border:1px solid red; margin-bottom:20px;'>
+;;             <form method='POST' action='/admin/rename-tag-global'>
+;;               <input type='hidden' name='old' value='%s'>
+;;               Admin: Rename this tag globally to: 
+;;               <input name='new' placeholder='new tag name' style='background:#000; color:#fff; border:1px solid #444;'>
+;;               <input type='submit' value='Apply to All Threads'>
+;;             </form>
+;;           </div>" tag-name)))
+
+;;       (insert "<a href='/home'>[Back]</a><hr>")
+;;       (if filtered
+;;           (dolist (tt filtered) (insert (render-thread-html tt nil admin)))
+;;         (insert "<p>No threads found with this tag.</p>"))
+;;       (insert "</body></html>"))))
 
 ;; (defun httpd/tags (proc path query args)
 ;;   (let* ((tag-raw (cadr (assoc "name" query)))
