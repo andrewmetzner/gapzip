@@ -12,7 +12,6 @@
 
 ;; --- ASCII ART HELPER ---
 (defun insert-board-ascii ()
-  "Reads the ascii art from the variable defined in main.el."
   (insert (format "<pre class='board-ascii'>%s</pre>" board-ascii-art)))
 
 (defvar board-ascii-art "

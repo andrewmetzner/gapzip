@@ -1,9 +1,24 @@
 ;;; controller.el --- Post & Admin Logic
 (require 'model)
 
-(defun board-get-ip (proc)
-  (let ((contact (process-contact proc t))) 
-    (if (plist-get contact :local) "127.0.0.1" (format "%s" (car contact)))))
+(defun board-get-ip (proc &optional args)
+  (let* ((contact (process-contact proc t))
+         (remote (plist-get contact :remote))
+         (direct-ip
+          (cond
+           ((vectorp remote) (format-network-address remote t))
+           ((consp remote) (car remote))
+           (t "127.0.0.1")))
+         (forwarded-ip (and args (board-get-forwarded-ip args))))
+    ;; Trust XFF only if direct IP is localhost (proxy)
+    (if (and forwarded-ip (string= direct-ip "127.0.0.1"))
+        forwarded-ip
+      direct-ip)))
+
+(defun board-get-forwarded-ip (args)
+  (let ((xff (cadr (assoc "X-Forwarded-For" args))))
+    (when xff
+      (car (split-string xff ",")))))
 
 (defun board-is-admin-p (proc args)
   (let ((cookie (cadr (assoc "Cookie" args)))) 
@@ -67,8 +82,8 @@
 
 ;; --- UPDATED board-handle-post IN controller.el ---
 (defun board-handle-post (proc args)
-  (let ((ip (board-get-ip proc)))
-    (if (member ip board-banned-ips) 
+  (let ((ip (board-get-ip proc args)))
+    (if (member ip board-banned-ips) 	
         (with-httpd-buffer proc "text/html"
           (insert "<html><body style='background:black;color:red;text-align:center;padding-top:50px;font-family:sans-serif;'>")
           (insert "<h1>BANNED!</h1>")
