@@ -82,13 +82,14 @@
 (defun board-render-body (text)
   (let* ((escaped (board-escape-html text))
          (with-reflinks (replace-regexp-in-string "&gt;&gt;\\([0-9]+\\)" 
-                                                  "<a href='#p\\1' class='reflink'>>>\\1</a>" escaped))
+                                                 "<a href='#p\\1' class='reflink'>>>\\1</a>" 
+                                                 escaped))
          (lines (split-string with-reflinks "\n")))
     (mapconcat (lambda (line) 
                  (if (string-prefix-p "&gt;" (string-trim-left line)) 
                      (format "<span class='greentext'>%s</span>" line) 
                    line)) 
-               lines "\n")))
+               lines "<br>")))
 
 (defun render-post-html (post &optional is-op in-thread-view thread is-admin)
   "Render an individual post with backlinks and Admin IP view."

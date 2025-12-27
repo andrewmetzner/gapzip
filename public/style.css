@@ -11,7 +11,7 @@
     --text-muted: #888;
     --text-subject: #ff6e27;
     --text-name: #00ff7f;
-    --text-trip: #ff79c6;       /* Added: Violet/Pink Tripcode Color */
+    --text-trip: #ff79c6;
     --text-greentext: #b3fb4a;
     --link-color: #79bac1;       
     --link-hover: #ff3e3e;       
@@ -110,9 +110,12 @@ a:hover, .quote-btn:hover, .rss-link:hover {
     transition: background 0.2s ease;
 }
 
+
+
+
 .reply {
     margin-left: 35px;
-    display: table; 
+    display: table;
 }
 
 /* Post Meta / Header */
@@ -133,10 +136,18 @@ a:hover, .quote-btn:hover, .rss-link:hover {
 }
 
 .content {
-    font-size: 0.95em;
     white-space: pre-wrap;
-    word-wrap: break-word;
+    word-wrap: break-word;  
+    line-height: 1.4;     
+    display: block;
+    margin-top: 10px;
 }
+
+/* .content { */
+/*     font-size: 0.95em; */
+/*     white-space: pre-wrap; */
+/*     word-wrap: break-word; */
+/* } */
 
 .greentext {
     color: var(--text-greentext);

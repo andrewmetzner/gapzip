@@ -50,9 +50,27 @@ x  |          |         |    |       |         |x
 ")
 
 ;; --- HELPERS ---
+;; (defun board-get-arg (args key)
+;;   (let* ((cb (cadr (assoc "Content" args))) (raw (if (stringp cb) cb "")) (re (concat "\\(?:^\\|&\\)" (if (symbolp key) (symbol-name key) key) "=\\([^&]*\\)")) (val (when (string-match re raw) (match-string 1 raw))))
+;;     (if val (url-unhex-string (replace-regexp-in-string "\\+" " " val)) nil)))
 (defun board-get-arg (args key)
-  (let* ((cb (cadr (assoc "Content" args))) (raw (if (stringp cb) cb "")) (re (concat "\\(?:^\\|&\\)" (if (symbolp key) (symbol-name key) key) "=\\([^&]*\\)")) (val (when (string-match re raw) (match-string 1 raw))))
-    (if val (url-unhex-string (replace-regexp-in-string "\\+" " " val)) nil)))
+  (let* ((post-data (plist-get args :post-data))
+         (content-assoc (cadr (assoc "Content" args)))
+         (raw (or post-data content-assoc ""))
+         (re (concat "\\(?:^\\|&\\)" (regexp-quote (if (symbolp key) (symbol-name key) key)) "=\\([^&]*\\)"))
+         (val (when (string-match re raw) (match-string 1 raw))))
+    (if (not val)
+        nil
+      (let ((result val))
+
+        (setq result (replace-regexp-in-string "\\+" " " result))
+
+        (setq result (replace-regexp-in-string "%0D%0A" "\n" result))
+        (setq result (replace-regexp-in-string "%0A" "\n" result))
+        (setq result (replace-regexp-in-string "%0D" "\n" result))
+	
+        (setq result (url-unhex-string result))
+        result))))
 
 (defun board-get-cookie-name (args)
   (let* ((cookie-header (cadr (assoc "Cookie" args)))
