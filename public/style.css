@@ -154,13 +154,9 @@ a:hover, .quote-btn:hover, .rss-link:hover {
     margin-right: 4px;
 }
 
-@keyframes highlight-fade {
-    0% { background: var(--highlight-bg); outline: 1px solid yellow; }
-    100% { background: var(--post-bg); }
-}
-
 .post:target {
-    animation: highlight-fade 3s ease-out;
+    background: var(--highlight-bg);
+    outline: 1px solid yellow;
 }
 
 .tags-container {

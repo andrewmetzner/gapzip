@@ -10,8 +10,6 @@
 (require 'simple-httpd) (require 'model) (require 'view) (require 'controller)
 (defvar board-admin-password "secret123") (setq httpd-port 8080)
 
-(defvar board-threads-per-page 10)
-
 (defun board-paginate (items page per-page)
   "Return sublist of ITEMS for PAGE (1-based)."
   (let* ((page (max 1 page))
@@ -92,7 +90,7 @@ x  |          |         |    |       |         |x
   "Render the home page with paginated threads, max 10 pages."
   (let* ((admin (board-is-admin-p proc args))
          (remembered-name (board-get-cookie-name args))
-         (threads-per-page 5)
+         (threads-per-page 10)
          (total-threads (length board-threads))
          (total-pages (ceiling (/ (float total-threads) threads-per-page)))
          (max-pages (min total-pages 10))
@@ -123,7 +121,7 @@ x  |          |         |    |       |         |x
                           (format "<b>[%d]</b> " p)
                         (format "<a href='/home?page=%d'>[%d]</a> " p p)))))
           (insert "</div>"))
-        (insert "</div></body></html>")))))
+        (insert (render-footer))))))
 
 (defun httpd/thread (proc path query args)
   (let* ((id-param (cadr (assoc "id" query)))
@@ -140,7 +138,7 @@ x  |          |         |    |       |         |x
       (insert-board-ascii)
       (insert (format "<div><a href='/home'>[Back]</a></div><hr><form method='POST' action='/post-entry'><input type='hidden' name='resto' value='%d'><input name='name' placeholder='Name#Trip' value='%s' style='margin-bottom:5px;'><br><textarea name='comment' rows='4' style='width:345px;'></textarea><br><input type='submit' value='Reply'></form><hr>" id (board-escape-html remembered-name)))
       (if tt (insert (render-thread-html tt t admin)) (insert "Not found")) 
-      (insert "</div></body></html>"))))
+      (insert (render-footer)))))
 
 ;; --- TAGS & TAG RSS ---
 
@@ -149,7 +147,7 @@ x  |          |         |    |       |         |x
   (let* ((tag-raw (cadr (assoc "name" query)))
          (tag-name (if tag-raw (url-unhex-string tag-raw) ""))
          (admin (board-is-admin-p proc args))
-         (threads-per-page 5)
+         (threads-per-page 10)
          (filtered (cl-remove-if-not
                     (lambda (tt) (member (downcase tag-name) (plist-get (plist-get tt :op) :tags)))
                     board-threads))
@@ -166,7 +164,7 @@ x  |          |         |    |       |         |x
         (insert (render-header (format "Tag: %s" tag-name) admin (format "/tags/rss?name=%s" (url-hexify-string tag-name))))
         (insert-board-ascii)
         (insert "<a href='/home'>[Back]</a><hr>")
-        (insert (format "<h2>Tagged: %s</h2>" tag-name))
+        (insert (format "<h2>Tag: %s</h2>" tag-name))
         (when admin
           (insert (format "
             <div class='admin-rename-box' style='background:#1a1a1a; padding:10px; border:1px solid red; margin-bottom:20px;'>
@@ -179,7 +177,7 @@ x  |          |         |    |       |         |x
             </div>" tag-name)))
         (if page-threads
             (dolist (tt page-threads) (insert (render-thread-html tt nil admin)))
-          (insert "<div><a href='/home'>[Back]</a></div><hr>Not found"))
+          (insert "<hr>Not found"))
         (when (> max-pages 1)
           (insert "<div class='pagination'>Pages: ")
           (dotimes (i max-pages)
@@ -189,7 +187,7 @@ x  |          |         |    |       |         |x
                         (format "<a href='/tags?name=%s&page=%d'>[%d]</a> "
                                 (url-hexify-string tag-name) p p)))))
           (insert "</div>"))
-        (insert "</div></body></html>")))))
+        (insert (render-footer))))))
 
 
 ;; (defun httpd/tags (proc path query args)

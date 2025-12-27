@@ -19,10 +19,18 @@
           (push (plist-get p :id) matches))))
     (nreverse matches)))
 
+(defun render-footer ()
+  "Render the common footer for all pages."
+  "<div class='footer' style='text-align:center; margin-top:20px; font-size:0.8em; color:#888;'>
+     Powered by <a href='https://github.com/andrewmetzner/gapzip' target='_blank'>Emacs Lisp</a>
+   </div>
+   </div></body></html>")
+
 (defun render-header (title &optional is-admin feed-url)
   (format "<!DOCTYPE html><html><head>
            <meta charset='UTF-8'>
            <meta name='viewport' content='width=device-width, initial-scale=0.7'>
+           <link rel=\"icon\" type=\"image/png\" href=\"/public/gwf.png\">
            <title>%s</title>
            %s
            <link rel='stylesheet' href='/public/style.css'>
@@ -35,7 +43,7 @@
            <body><div class='container'>
            <div class='top-nav'>
              <span class='board-title'>goatse.world</span> 
-             %s | 
+             %s
              %s
            </div>" 
           title
@@ -43,7 +51,33 @@
           (if feed-url (format " <a href='%s' class='rss-link'>[RSS get!]</a>" feed-url) "")
           (if is-admin 
               "<b>Admin:</b> <a href='/admin/dashboard'>Bans</a> | <a href='/admin/logout'>Logout</a>" 
-              "<a href='/login'>Admin Login</a>")))
+              "<a href='/login'>∈)☼(∋</a>")))
+
+;; (defun render-header (title &optional is-admin feed-url)
+;;   (format "<!DOCTYPE html><html><head>
+;;            <meta charset='UTF-8'>
+;;            <meta name='viewport' content='width=device-width, initial-scale=0.7'>
+;;            <title>%s</title>
+;;            %s
+;;            <link rel='stylesheet' href='/public/style.css'>
+;;            <script>
+;;              function quote(id) { 
+;;                const box = document.querySelector('textarea[name=\"comment\"]'); 
+;;                if(box) { box.value += '>>' + id + '\\n'; box.focus(); } 
+;;              }
+;;            </script></head>
+;;            <body><div class='container'>
+;;            <div class='top-nav'>
+;;              <span class='board-title'>goatse.world</span> 
+;;              %s
+;;              %s
+;;            </div>" 
+;;           title
+;;           (if feed-url (format "<link rel='alternate' type='application/rss+xml' title='%s' href='%s'>" title feed-url) "")
+;;           (if feed-url (format " <a href='%s' class='rss-link'>[RSS get!]</a>" feed-url) "")
+;;           (if is-admin 
+;;               "<b>Admin:</b> <a href='/admin/dashboard'>Bans</a> | <a href='/admin/logout'>Logout</a>" 
+;;               "<a href='/login'>∈)☼(∋</a>")))
 
 (defun board-render-body (text)
   (let* ((escaped (board-escape-html text))
