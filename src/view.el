@@ -66,37 +66,14 @@
               "<b>Admin:</b> <a href='/admin/dashboard'>Bans</a> | <a href='/admin/logout'>Logout</a>" 
               "<a href='/login'>∈)☼(∋</a>")))
 
-;; (defun render-header (title &optional is-admin feed-url)
-;;   (format "<!DOCTYPE html><html><head>
-;;            <meta charset='UTF-8'>
-;;            <meta name='viewport' content='width=device-width, initial-scale=0.7'>
-;;            <title>%s</title>
-;;            %s
-;;            <link rel='stylesheet' href='/public/style.css'>
-;;            <script>
-;;              function quote(id) { 
-;;                const box = document.querySelector('textarea[name=\"comment\"]'); 
-;;                if(box) { box.value += '>>' + id + '\\n'; box.focus(); } 
-;;              }
-;;            </script></head>
-;;            <body><div class='container'>
-;;            <div class='top-nav'>
-;;              <span class='board-title'>goatse.world</span> 
-;;              %s
-;;              %s
-;;            </div>" 
-;;           title
-;;           (if feed-url (format "<link rel='alternate' type='application/rss+xml' title='%s' href='%s'>" title feed-url) "")
-;;           (if feed-url (format " <a href='%s' class='rss-link'>[RSS get!]</a>" feed-url) "")
-;;           (if is-admin 
-;;               "<b>Admin:</b> <a href='/admin/dashboard'>Bans</a> | <a href='/admin/logout'>Logout</a>" 
-;;               "<a href='/login'>∈)☼(∋</a>")))
-
-(defun board-render-body (text)
+(defun board-render-body (text &optional thread-id)
   (let* ((escaped (board-escape-html text))
+         (reflink-target (if thread-id 
+                             (format "/thread?id=%s#p\\1" thread-id) 
+                           "#p\\1"))
          (with-reflinks (replace-regexp-in-string "&gt;&gt;\\([0-9]+\\)" 
-                                                 "<a href='#p\\1' class='reflink'>>>\\1</a>" 
-                                                 escaped))
+                                                  (format "<a href='%s' class='reflink'>>>\\1</a>" reflink-target) 
+                                                  escaped))
          (lines (split-string with-reflinks "\n")))
     (mapconcat (lambda (line) 
                  (if (string-prefix-p "&gt;" (string-trim-left line)) 
@@ -104,96 +81,35 @@
                    line)) 
                lines "<br>")))
 
-;; (defun render-post-html (post &optional is-op in-thread-view thread is-admin)
-;;   (let* ((id (plist-get post :id)) 
-;;          (ip (plist-get post :ip)) 
-;;          (tags (plist-get post :tags))
-;;          (backlinks (when (and thread in-thread-view) (board-get-replies-to id thread))))
-;;     (format "<div class='post %s' id='p%s'>
-;;                <div class='post-meta'>
-;;                  <span class='subject'>%s</span> 
-;;                  <span class='name'>%s%s</span> 
-;;                  <span class='date'>%s</span> 
-;;                  <span class='num'><a class='post-id-link' href='#p%s'>No.%s</a></span>
-;;                  %s %s %s
-;;                </div>
-;;                <div class='content'>%s</div>
-;;                %s
-;;                %s
-;;              </div>"
-;;             (if is-op "op" "reply") 
-;;             id 
-;;             (board-escape-html (or (plist-get post :subject) ""))
-;;             (board-escape-html (or (plist-get post :name) "Anonymous")) 
-;;             (if (plist-get post :trip) (format "<span class='tripcode'>!%s</span>" (plist-get post :trip)) "")
-;;             (plist-get post :timestamp) 
-;;             id id 
-;;             (if (and is-op (not in-thread-view)) 
-;;                 (format " [<a href='/thread?id=%s' class='nav-link'>View Thread</a>]" id) "")
-;;             (if in-thread-view 
-;;                 (format " [<span class='quote-btn' onclick='quote(%s)'>Reply</span>]" id) "")
-            
-;;             (if is-admin 
-;;                 (format "<span class='admin-tools'>
-;;                           [<a href='/admin/edit?id=%s' class='admin-edit'>E</a>] 
-;;                           [<a href='/admin/delete?id=%s' class='admin-del'>D</a>] 
-;;                           [<a href='/admin/ban?ip=%s' class='admin-ban'>B</a>] 
-;;                           <small class='ip-tag'>(IP: %s)</small>
-;;                         </span>" id id ip ip) "")
-
-;;             (board-render-body (or (plist-get post :body) ""))
-;;             (if backlinks 
-;;                 (format "<div class='backlinks'>Replies: %s</div>" 
-;;                         (mapconcat (lambda (bid) (format "<a href='#p%s' class='reflink'>>>%s</a>" bid bid)) backlinks " "))
-;;               "")
-;;             (if (and is-op (or tags is-admin))
-;;                 (format "<div class='tags-container' style='display:flex; align-items:center; gap:10px; margin-top:5px;'>
-;;                           <div><span class='tag-label'>Tags:</span> %s</div>
-;;                           %s
-;;                         </div>" 
-;;                         (if tags (mapconcat (lambda (tag) (format "<a href='/tags?name=%s' class='tag'>%s</a>" (url-hexify-string tag) tag)) tags " ") "none")
-;;                         (if is-admin 
-;;                             (format "<form method='POST' action='/admin/update-tags' style='display:inline;'>
-;;                                       <input type='hidden' name='id' value='%s'>
-;;                                       <input type='hidden' name='redirect' value='%s'>
-;;                                       <input name='tags' value='%s' style='width:120px; font-size:10px; background:#111; color:#ccc; border:1px solid #333; height:18px;'>
-;;                                       <input type='submit' value='set' style='font-size:10px; height:20px; padding:0 5px;'>
-;;                                     </form>" 
-;;                                     id (if in-thread-view "thread" "home") (mapconcat 'identity tags ","))
-;;                           ""))
-;;               ""))))
-
 (defun render-post-html (post &optional is-op in-thread-view thread is-admin)
   (let* ((id (plist-get post :id)) 
          (ip (plist-get post :ip)) 
          (tags (plist-get post :tags))
-         ;; Determine the link destination: 
-         ;; If we are in the thread, just jump to anchor.
-         ;; If we are on the home page, link to the thread page + anchor.
+         
          (thread-id (if is-op id (plist-get (plist-get thread :op) :id)))
          (post-link (if in-thread-view 
                         (format "#p%s" id) 
                       (format "/thread?id=%s#p%s" thread-id id)))
          (backlinks (when (and thread in-thread-view) (board-get-replies-to id thread))))
     (format "<div class='post %s' id='p%s'>
-               <div class='post-meta'>
-                 <span class='subject'>%s</span> 
-                 <span class='name'>%s%s</span> 
-                 <span class='date'>%s</span> 
-                 <span class='num'><a class='post-id-link' href='%s'>No.%s</a></span>
-                 %s %s %s
-               </div>
-               <div class='content'>%s</div>
-               %s
-               %s
-             </div>"
+                <div class='post-meta'>
+                  <span class='subject'>%s</span> 
+                  <span class='name'>%s%s</span> 
+                  <span class='date'>%s</span> 
+                  <span class='num'><a class='post-id-link' href='%s'>No.%s</a></span>
+                  %s %s %s
+                </div>
+                <div class='content'>%s</div>
+                %s
+                %s
+              </div>"
             (if is-op "op" "reply") 
             id 
             (board-escape-html (or (plist-get post :subject) ""))
             (board-escape-html (or (plist-get post :name) "Anonymous")) 
             (if (plist-get post :trip) (format "<span class='tripcode'>!%s</span>" (plist-get post :trip)) "")
             (plist-get post :timestamp) 
-            post-link id ;; Use the new dynamic link here
+            post-link id
             (if (and is-op (not in-thread-view)) 
                 (format " [<a href='/thread?id=%s' class='nav-link'>View Thread</a>]" id) "")
             (if in-thread-view 
@@ -201,36 +117,38 @@
             
             (if is-admin 
                 (format "<span class='admin-tools'>
-                          [<a href='/admin/edit?id=%s' class='admin-edit'>E</a>] 
-                          [<a href='/admin/delete?id=%s' class='admin-del'>D</a>] 
-                          [<a href='/admin/ban?ip=%s' class='admin-ban'>B</a>] 
-                          <small class='ip-tag'>(IP: %s)</small>
-                        </span>" id id ip ip) "")
+                           [<a href='/admin/edit?id=%s' class='admin-edit'>E</a>] 
+                           [<a href='/admin/delete?id=%s' class='admin-del'>D</a>] 
+                           [<a href='/admin/ban?ip=%s' class='admin-ban'>B</a>] 
+                           <small class='ip-tag'>(IP: %s)</small>
+                         </span>" id id ip ip) "")
 
-            (board-render-body (or (plist-get post :body) ""))
+            ;; PASSING THREAD-ID HERE
+            (board-render-body (or (plist-get post :body) "") thread-id)
+
             (if backlinks 
                 (format "<div class='backlinks'>Replies: %s</div>" 
-                        (mapconcat (lambda (bid) (format "<a href='#p%s' class='reflink'>>>%s</a>" bid bid)) backlinks " "))
+                        (mapconcat (lambda (bid) (format "<a href='/thread?id=%s#p%s' class='reflink'>>>%s</a>" thread-id bid bid)) backlinks " "))
               "")
             (if (and is-op (or tags is-admin))
                 (format "<div class='tags-container' style='display:flex; align-items:center; gap:10px; margin-top:5px;'>
-                          <div><span class='tag-label'>Tags:</span> %s</div>
-                          %s
-                        </div>" 
+                           <div><span class='tag-label'>Tags:</span> %s</div>
+                           %s
+                         </div>" 
                         (if tags (mapconcat (lambda (tag) (format "<a href='/tags?name=%s' class='tag'>%s</a>" (url-hexify-string tag) tag)) tags " ") "none")
                         (if is-admin 
                             (format "<form method='POST' action='/admin/update-tags' style='display:inline;'>
-                                      <input type='hidden' name='id' value='%s'>
-                                      <input type='hidden' name='redirect' value='%s'>
-                                      <input name='tags' value='%s' style='width:120px; font-size:10px; background:#111; color:#ccc; border:1px solid #333; height:18px;'>
-                                      <input type='submit' value='set' style='font-size:10px; height:20px; padding:0 5px;'>
-                                    </form>" 
+                                       <input type='hidden' name='id' value='%s'>
+                                       <input type='hidden' name='redirect' value='%s'>
+                                       <input name='tags' value='%s' style='width:120px; font-size:10px; background:#111; color:#ccc; border:1px solid #333; height:18px;'>
+                                       <input type='submit' value='set' style='font-size:10px; height:20px; padding:0 5px;'>
+                                     </form>" 
                                     id (if in-thread-view "thread" "home") (mapconcat 'identity tags ","))
                           ""))
               ""))))
 
 (defun render-thread-html (thread &optional full-view is-admin)
-  (let* ((op (plist-get thread :op)) 
+  (let* ((op (plist-get thread :op)) o
          (replies (plist-get thread :replies)) 
          (count (length replies))
          (shown (if full-view replies (last replies 3))))
