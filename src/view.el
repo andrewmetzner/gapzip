@@ -298,7 +298,7 @@
   (if (not tags)
       ""
     (format "<div class='tag-overview' style='text-align:center; margin:10px 0; font-family:monospace;'>
-               <span style='color:#888;'>popular tags:</span> 
+               <span style='color:#888;'>recent tags:</span> 
                %s
 
                <br><div style='display:inline-block; margin-left:15px;'>

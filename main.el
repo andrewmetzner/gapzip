@@ -115,7 +115,7 @@ x  |          |         |    |       |         |x
          (recent-tags (let ((all-tags nil))
                         (dolist (tt board-threads)
                           (setq all-tags (append (plist-get (plist-get tt :op) :tags) all-tags)))
-                        (seq-take (delete-dups (reverse all-tags)) 25)))
+                        (seq-take (delete-dups (reverse all-tags)) 10)))
          (total-pages (ceiling (/ (float total-threads) threads-per-page)))
          (max-pages (min total-pages 10))
          (page-param (cadr (assoc "page" query)))
