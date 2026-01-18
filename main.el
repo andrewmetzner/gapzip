@@ -105,7 +105,6 @@ x  |          |         |    |       |         |x
 
 ;; --- ROUTES ---
 (defun httpd/home (proc path query args)
-  "Render the home page with paginated threads and rate-limit error handling."
   (let* ((admin (board-is-admin-p proc args))
          (remembered-name (board-get-cookie-name args))
 

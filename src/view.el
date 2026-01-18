@@ -300,7 +300,8 @@
     (format "<div class='tag-overview' style='text-align:center; margin:10px 0; font-family:monospace;'>
                <span style='color:#888;'>popular tags:</span> 
                %s
-               <div style='display:inline-block; margin-left:15px;'>
+
+               <br><div style='display:inline-block; margin-left:15px;'>
                  <form action='/tags' method='GET' style='display:inline;'>
                    <input type='text' name='name' placeholder='search tags...' 
                           style='background:#000; color:#ccc; border:1px solid #444; font-size:0.8em; padding:2px 5px; width:100px;'>
