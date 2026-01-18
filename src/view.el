@@ -1,6 +1,19 @@
 ;;; view.el --- Modular HTML Rendering Engine
 
-(defvar site-root "http://localhost:8080")
+;; (defvar site-root "http://localhost:8080")
+
+(defun board-get-config (filename default-val)
+  (let ((file-path (expand-file-name (concat "data/" filename) 
+                                     (or (bound-and-true-p board-root) default-directory))))
+    (if (file-exists-p file-path)
+        (with-temp-buffer
+          (insert-file-contents file-path)
+          (goto-char (point-min))
+          (let ((line (buffer-substring-no-properties (line-beginning-position) (line-end-position))))
+            (if (string-empty-p (string-trim line)) default-val (string-trim line))))
+      default-val)))
+
+(defvar site-root (board-get-config "hostname" "http://localhost:8080"))
 
 (defun board-escape-html (text)
   (let ((table '(("&" . "&amp;") ("<" . "&lt;") (">" . "&gt;") ("\"" . "&quot;"))))
@@ -320,5 +333,16 @@
      "No tags found.")
    "</div></div>"
    (render-footer)))
+
+(defun render-rate-limit-page (ip wait-mins)
+  "Raw HTML to force a render in any browser."
+  (concat
+   "<html><body style='background-color:black;color:red;font-family:monospace;padding:50px;'>"
+   "<h1>[ RATE LIMIT REACHED ]</h1>"
+   "<hr>"
+   "<p><b>IP:</b> " ip "</p>"
+   "<p><b>RETRY IN:</b> " (number-to-string wait-mins) " minutes.</p>"
+   "<p><a href='/home' style='color:white;'>[ RETURN HOME ]</a></p>"
+   "</body></html>"))
 
 (provide 'view)

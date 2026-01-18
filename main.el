@@ -8,7 +8,18 @@
 (add-to-list 'load-path (expand-file-name "src" board-root))
 
 (require 'simple-httpd) (require 'model) (require 'view) (require 'controller)
-(defvar board-admin-password "secret123") (setq httpd-port 8080)
+
+(defvar board-admin-password 
+  (let ((pwd-file (expand-file-name "data/password" board-root)))
+    (if (file-exists-p pwd-file)
+        (with-temp-buffer
+          (insert-file-contents pwd-file)
+
+          (goto-char (point-min))
+          (buffer-substring-no-properties (line-beginning-position) (line-end-position)))
+      "no_file")))
+
+(setq httpd-port 8080)
 
 (defun board-paginate (items page per-page)
   "Return sublist of ITEMS for PAGE (1-based)."
@@ -93,12 +104,71 @@ x  |          |         |    |       |         |x
       (httpd-error proc 404))))
 
 ;; --- ROUTES ---
+(defun httpd/home (proc path query args)
+  "Render the home page with paginated threads and rate-limit error handling."
+  (let* ((admin (board-is-admin-p proc args))
+         (remembered-name (board-get-cookie-name args))
+
+         (error-msg (cadr (assoc "error" query)))
+         (threads-per-page 10)
+         (total-threads (length board-threads))
+ 
+         (recent-tags (let ((all-tags nil))
+                        (dolist (tt board-threads)
+                          (setq all-tags (append (plist-get (plist-get tt :op) :tags) all-tags)))
+                        (seq-take (delete-dups (reverse all-tags)) 25)))
+         (total-pages (ceiling (/ (float total-threads) threads-per-page)))
+         (max-pages (min total-pages 10))
+         (page-param (cadr (assoc "page" query)))
+         (page (if page-param (string-to-number page-param) 1)))
+    (setq page (max 1 (min page max-pages)))
+    (let* ((start (* (- page 1) threads-per-page))
+           (end (min total-threads (+ start threads-per-page)))
+           (page-threads (if (<= page max-pages) (cl-subseq board-threads start end) nil)))
+      (with-httpd-buffer proc "text/html"
+        (insert (render-header "goatse.world" admin "/rss"))
+        (insert-board-ascii)
+        (insert (render-tag-overview recent-tags))
+
+        (when (string= error-msg "ratelimit")
+          (insert "<div style='color: #ff4444; border: 1px solid #ff4444; padding: 10px; 
+                         margin: 10px auto; width: 345px; text-align: center; 
+                         font-family: monospace; background: #1a0000;'>
+                    [!] RATE LIMIT REACHED<br>
+                    <span style='font-size:0.8em;'>Max 5 posts per hour. Please wait.</span>
+                  </div>"))
+        
+        (insert (format "<h3></h3><form method='POST' action='/post-entry'>
+                          <input name='name' placeholder='Name#Trip' value='%s'>
+                          <input name='subject' placeholder='Subject'><br>
+                          <input name='tags' placeholder='Tags' style='width:345px;margin-top:5px;'><br>
+                          <textarea name='comment' rows='4' style='width:345px;margin-top:5px;'></textarea><br>
+                          <input type='submit' value='Create New Thread'>
+                        </form><hr>" (board-escape-html remembered-name)))
+
+        (if page-threads
+            (dolist (tt page-threads) (insert (render-thread-html tt nil admin)))
+          (insert "<div><a href='/home'>[Back]</a></div><hr>Not found"))
+
+        (when (> max-pages 1)
+          (insert "<div class='pagination'>Pages: ")
+          (dotimes (i max-pages)
+            (let ((p (1+ i)))
+              (insert (if (= p page)
+                          (format "<b>[%d]</b> " p)
+                        (format "<a href='/home?page=%d'>[%d]</a> " p p)))))
+          (insert "</div>"))
+        (insert (render-footer))))))
 
 ;; (defun httpd/home (proc path query args)
 ;;   (let* ((admin (board-is-admin-p proc args))
 ;;          (remembered-name (board-get-cookie-name args))
 ;;          (threads-per-page 10)
 ;;          (total-threads (length board-threads))
+;;          (recent-tags (let ((all-tags nil))
+;;                         (dolist (tt board-threads)
+;;                           (setq all-tags (append (plist-get (plist-get tt :op) :tags) all-tags)))
+;;                         (seq-take (delete-dups (reverse all-tags)) 25)))
 ;;          (total-pages (ceiling (/ (float total-threads) threads-per-page)))
 ;;          (max-pages (min total-pages 10))
 ;;          (page-param (cadr (assoc "page" query)))
@@ -110,6 +180,8 @@ x  |          |         |    |       |         |x
 ;;       (with-httpd-buffer proc "text/html"
 ;;         (insert (render-header "goatse.world" admin "/rss"))
 ;;         (insert-board-ascii)
+;;         (insert (render-tag-overview recent-tags))
+        
 ;;         (insert (format "<h3></h3><form method='POST' action='/post-entry'>
 ;;                           <input name='name' placeholder='Name#Trip' value='%s'>
 ;;                           <input name='subject' placeholder='Subject'><br>
@@ -129,48 +201,6 @@ x  |          |         |    |       |         |x
 ;;                         (format "<a href='/home?page=%d'>[%d]</a> " p p)))))
 ;;           (insert "</div>"))
 ;;         (insert (render-footer))))))
-
-(defun httpd/home (proc path query args)
-  (let* ((admin (board-is-admin-p proc args))
-         (remembered-name (board-get-cookie-name args))
-         (threads-per-page 10)
-         (total-threads (length board-threads))
-         (recent-tags (let ((all-tags nil))
-                        (dolist (tt board-threads)
-                          (setq all-tags (append (plist-get (plist-get tt :op) :tags) all-tags)))
-                        (seq-take (delete-dups (reverse all-tags)) 25)))
-         (total-pages (ceiling (/ (float total-threads) threads-per-page)))
-         (max-pages (min total-pages 10))
-         (page-param (cadr (assoc "page" query)))
-         (page (if page-param (string-to-number page-param) 1)))
-    (setq page (max 1 (min page max-pages)))
-    (let* ((start (* (- page 1) threads-per-page))
-           (end (min total-threads (+ start threads-per-page)))
-           (page-threads (if (<= page max-pages) (cl-subseq board-threads start end) nil)))
-      (with-httpd-buffer proc "text/html"
-        (insert (render-header "goatse.world" admin "/rss"))
-        (insert-board-ascii)
-        (insert (render-tag-overview recent-tags))
-        
-        (insert (format "<h3></h3><form method='POST' action='/post-entry'>
-                          <input name='name' placeholder='Name#Trip' value='%s'>
-                          <input name='subject' placeholder='Subject'><br>
-                          <input name='tags' placeholder='Tags' style='width:345px;margin-top:5px;'><br>
-                          <textarea name='comment' rows='4' style='width:345px;margin-top:5px;'></textarea><br>
-                          <input type='submit' value='Create New Thread'>
-                        </form><hr>" (board-escape-html remembered-name)))
-        (if page-threads
-            (dolist (tt page-threads) (insert (render-thread-html tt nil admin)))
-          (insert "<div><a href='/home'>[Back]</a></div><hr>Not found"))
-        (when (> max-pages 1)
-          (insert "<div class='pagination'>Pages: ")
-          (dotimes (i max-pages)
-            (let ((p (1+ i)))
-              (insert (if (= p page)
-                          (format "<b>[%d]</b> " p)
-                        (format "<a href='/home?page=%d'>[%d]</a> " p p)))))
-          (insert "</div>"))
-        (insert (render-footer))))))
 
 (defun httpd/thread (proc path query args)
   (let* ((id-param (cadr (assoc "id" query)))
@@ -331,17 +361,15 @@ x  |          |         |    |       |         |x
 (defun httpd/login (proc path query args) (with-httpd-buffer proc "text/html" (insert-board-ascii) (insert "<h2>Admin</h2><form method='POST' action='/admin/auth'><input type='password' name='pwd'><input type='submit'></form>")))
 (defun httpd/admin/auth (proc path query args) (let ((pwd (board-get-arg args "pwd"))) (if (string= pwd board-admin-password) (progn (httpd-send-header proc "text/html" 302 :Location "/home" :Set-Cookie (format "session=%s; Path=/; HttpOnly" board-admin-password)) (process-send-string proc "")) (httpd-error proc 403))))
 
+(defvar board-post-log nil "List of (ip . timestamp) for rate limiting.")
 (defun httpd/post-entry (proc path query args)
   (let* ((ip (car (process-contact proc)))
          (admin (board-is-admin-p proc args)))
-    
     (if (or admin (board-check-rate-limit ip))
         (board-handle-post proc args)
-      (with-httpd-buffer proc "text/html"
-        (httpd-send-header proc "text/html" 429)
-        (insert "<h2>Rate Limit Exceeded</h2>
-                 <p>You can only post 5 times per hour. Please wait and try again later.</p>
-                 <a href='/home'>Back</a>")))))
+      ;; RATE LIMIT HIT: Redirect back to home with an error flag
+      (httpd-send-header proc "text/html" 302 :Location "/home?error=ratelimit")
+      (process-send-string proc ""))))
 
 ;; (defun httpd/post-entry (proc path query args) (board-handle-post proc args))
 (defun httpd/ (proc path query args) (httpd-redirect proc "/home"))

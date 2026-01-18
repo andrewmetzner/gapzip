@@ -1,0 +1,10 @@
+# protect data
+data/
+
+*~
+\#*\#
+.\#*
+
+# os specific 
+.DS_Store
+Thumbs.db
