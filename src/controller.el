@@ -77,6 +77,77 @@
                      :Set-Cookie "session=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT")
   (process-send-string proc ""))
 
+;; --- EDIT LOGIC ---
+
+(defun board-admin-edit-route (proc path query args)
+  (if (not (board-is-admin-p proc args)) 
+      (httpd-error proc 403) 
+    (let* ((id-param (cadr (assoc "id" query)))
+           (id (when id-param (string-to-number id-param)))
+           (post (or (let ((tt (cl-find-if (lambda (x) (= (plist-get (plist-get x :op) :id) id)) board-threads)))
+                       (when tt (plist-get tt :op)))
+                     (cl-some (lambda (tt) 
+                                (cl-find-if (lambda (r) (= (plist-get r :id) id)) 
+                                            (plist-get tt :replies))) 
+                              board-threads))))
+      (if (not post)
+          (httpd-error proc 404)
+        (with-httpd-buffer proc "text/html"
+          (insert (render-header (format "Editing Post #%d" id) t))
+          (insert (format "<h2>Edit Post #%d</h2>" id))
+          (insert (format "
+            <form method='POST' action='/admin/update'>
+              <input type='hidden' name='id' value='%d'>
+              
+              <label>Author:</label><br>
+              <input type='text' name='name' value='%s' style='width:100%%; margin-bottom:10px;'><br>
+              
+              <label>Subject:</label><br>
+              <input type='text' name='subject' value='%s' style='width:100%%; margin-bottom:10px;'><br>
+              
+              <label>Comment:</label><br>
+              <textarea name='comment' rows='12' cols='80' style='width:100%%; font-family:monospace;'>%s</textarea><br><br>
+              
+              <input type='submit' value='Save Changes'>
+            </form>" 
+            id 
+            (board-escape-html (or (plist-get post :name) ""))
+            (board-escape-html (or (plist-get post :subject) ""))
+            (board-escape-html (or (plist-get post :body) ""))))
+          (insert "<br><hr><a href='/home'>Cancel</a></body></html>"))))))
+
+(defun board-admin-update-route (proc path query args)
+  (if (not (board-is-admin-p proc args)) 
+      (httpd-error proc 403)
+    (let* ((id (string-to-number (or (board-get-arg args "id") "0")))
+           (new-name (board-get-arg args "name"))
+           (new-subj (board-get-arg args "subject"))
+           (new-body (board-get-arg args "comment")))
+      (when (and (> id 0) new-body)
+        (let ((found nil))
+          (dolist (tt board-threads)
+            (let ((op (plist-get tt :op)))
+              ;; Check if it's the OP
+              (if (= (plist-get op :id) id)
+                  (progn 
+                    (plist-put op :name new-name)
+                    (plist-put op :subject new-subj)
+                    (plist-put op :body new-body)
+                    (setq found t))
+                ;; Check the replies
+                (dolist (r (plist-get tt :replies))
+                  (when (= (plist-get r :id) id)
+                    (plist-put r :name new-name)
+                    (plist-put r :subject new-subj)
+                    (plist-put r :body new-body)
+                    (setq found t))))))
+          (when found 
+            (board-save)
+           ; (message "ADMIN: Updated post #%d" id)
+	    )
+	  ))
+      (httpd-redirect proc "/home"))))
+
 ;; --- POST HANDLING ---
 
 ;; ;; --- UPDATED board-handle-post IN controller.el ---
@@ -165,7 +236,6 @@
 ;;                                                  (url-hexify-string name-raw)))
 ;;           (process-send-string proc ""))))))
 (defun board-handle-post (proc args)
-  "Handle posting a new thread or a reply, with bump-on-reply logic and newline debugging."
   (let ((ip (board-get-ip proc args)))
     (if (member ip board-banned-ips)     
         (with-httpd-buffer proc "text/html"
