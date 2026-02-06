@@ -241,16 +241,20 @@
    "</div></div>"
    (render-footer)))
 
-(defun render-rate-limit-box ()
-  "Returns a small standalone HTML warning box."
-  "<div class='rate-limit-error' style='color: #ff4444; border: 1px solid #ff4444; 
+(defun render-rate-limit-box (&optional ip wait-time)
+  "Returns a standalone HTML string. &optional prevents wrong-number-of-arguments errors."
+  (format 
+   "<div class='rate-limit-error' style='color: #ff4444; border: 1px solid #ff4444; 
                 padding: 10px; margin: 10px auto; width: 345px; text-align: center; 
                 font-family: monospace; background: #1a0000; box-shadow: 0 0 10px rgba(255,0,0,0.5);'>
      <b style='font-size: 1.2em;'>[!] RATE LIMIT REACHED</b><br>
      <span style='font-size: 0.85em; color: #ccc;'>
-       Max 5 posts per hour. Please wait before posting again.
+       IP: %s | Wait: %s seconds<br>
+       Max 5 posts per hour.
      </span>
-   </div>")
+   </div>" 
+   (or ip "Unknown") 
+   (or wait-time "60")))
 
 (defun render-rate-limit-page (&rest _args)
   "Fallback to prevent 500 errors if called as a full page."
@@ -258,6 +262,8 @@
    (render-header "Rate Limited")
    (render-rate-limit-box)
    (render-footer)))
+
+
 
 
 (provide 'view)
