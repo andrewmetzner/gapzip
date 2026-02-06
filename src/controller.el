@@ -1,12 +1,28 @@
 ;;; controller.el --- Post & Admin Logic
 (require 'model)
 
+;; (defun board-get-ip (proc &optional args)
+;;   (let* ((contact (process-contact proc t))
+;;          (remote (plist-get contact :remote))
+;;          (direct-ip
+;;           (cond
+;;            ((vectorp remote) (format-network-address remote t))
+;;            ((consp remote) (car remote))
+;;            (t "127.0.0.1")))
+;;          (forwarded-ip (and args (board-get-forwarded-ip args))))
+;;     (if (and forwarded-ip (string= direct-ip "127.0.0.1"))
+;;         forwarded-ip
+;;       direct-ip)))
+
 (defun board-get-ip (proc &optional args)
   (let* ((contact (process-contact proc t))
          (remote (plist-get contact :remote))
          (direct-ip
           (cond
-           ((vectorp remote) (format-network-address remote t))
+           ((vectorp remote) 
+            ;; Strip port from address vector
+            (let ((addr (format-network-address remote t)))
+              (if (string-match "^\\([^:]+\\):" addr) (match-string 1 addr) addr)))
            ((consp remote) (car remote))
            (t "127.0.0.1")))
          (forwarded-ip (and args (board-get-forwarded-ip args))))
@@ -327,5 +343,25 @@
                     (mapcar (lambda (tag) (if (string= tag old-tag) new-tag tag)) tags)))))
         (board-save))
       (httpd-redirect proc (format "/tags?name=%s" (url-hexify-string new-tag))))))
+
+(defun board-check-rate-limit (ip)
+  "Return T if IP is allowed to post, NIL if limited.
+Limit: 5 posts per hour."
+  (let* ((now (float-time))
+         (one-hour-ago (- now 3600))
+         ;; Clean up old logs and filter for this specific IP
+         (user-posts (cl-remove-if-not
+                      (lambda (entry)
+                        (and (string= (car entry) ip)
+                             (> (cdr entry) one-hour-ago)))
+                      board-post-log)))
+    (if (< (length user-posts) 5)
+        (progn
+          ;; Record this attempt
+          (push (cons ip now) board-post-log)
+          t)
+      nil)))
+
+
 
 (provide 'controller)
