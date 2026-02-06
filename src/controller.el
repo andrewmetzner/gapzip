@@ -159,7 +159,7 @@
                  </body></html>")))
      ((not (board-check-rate-limit ip (1+ board-post-count)))
       (with-httpd-buffer proc "text/html"
-        (insert (render-rate-limit-page ip 60))))
+        (insert (render-rate-limit-box ip 60))))
      (t 
       (let* ((comment (board-get-arg args "comment")) 
              (subj (board-get-arg args "subject")) 

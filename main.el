@@ -125,10 +125,9 @@ x  |          |         |    |       |         |x
         (insert-board-ascii)
         (insert (render-tag-overview recent-tags))
 
-        ;; --- Fixed Rate Limit Injection ---
-        (when (string= error-msg "ratelimit")
-          (insert (render-rate-limit-page))) 
-        
+	(when (string= error-msg "ratelimit")
+	  (insert (render-rate-limit-box)))
+
         (insert (format "<h3></h3><form method='POST' action='/post-entry'>
                           <input name='name' placeholder='Name#Trip' value='%s'>
                           <input name='subject' placeholder='Subject'><br>
@@ -167,8 +166,8 @@ x  |          |         |    |       |         |x
       (insert-board-ascii)
 
       (when (string= error-msg "ratelimit")
-        (insert (render-rate-limit-page)))
-
+	(insert (render-rate-limit-box)))
+      
       (insert (format "<div><a href='/home'>[Back]</a></div><hr><form method='POST' action='/post-entry'><input type='hidden' name='resto' value='%d'><input name='name' placeholder='Name#Trip' value='%s' style='margin-bottom:5px;'><br><textarea name='comment' rows='4' style='width:345px;'></textarea><br><input type='submit' value='Reply'></form><hr>" id (board-escape-html remembered-name)))
       (if tt (insert (render-thread-html tt t admin)) (insert "Not found")) 
       (insert (render-footer)))))
