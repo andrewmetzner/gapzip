@@ -260,8 +260,7 @@ x  |          |         |    |       |         |x
     (httpd-redirect proc "/admin/log")))
 
 ;; --- ROUTE REGISTRATION ---
-(httpd-def-route "/admin/log" 'httpd/admin/log)
-(httpd-def-route "/admin/clear-log" 'httpd/admin/clear-log)
+
 
 (defun httpd/admin/dashboard (proc path query args) (board-admin-dashboard-route proc path query args))
 (defun httpd/admin/delete (proc path query args) (board-admin-delete-route proc path query args))
