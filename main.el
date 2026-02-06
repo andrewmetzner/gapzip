@@ -285,7 +285,6 @@ x  |          |         |    |       |         |x
 (defun httpd/post-entry (proc path query args)
   (let* ((ip (board-get-ip proc args))
          (admin (board-is-admin-p proc args)))
-    ;; Corrected: Passed ip AND post-id to the rate limit check
     (if (or admin (board-check-rate-limit ip (1+ board-post-count)))
         (board-handle-post proc args)
       (httpd-send-header proc "text/html" 302 :Location "/home?error=ratelimit")
