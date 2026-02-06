@@ -20,7 +20,6 @@
          (direct-ip
           (cond
            ((vectorp remote) 
-            ;; Strip port from address vector
             (let ((addr (format-network-address remote t)))
               (if (string-match "^\\([^:]+\\):" addr) (match-string 1 addr) addr)))
            ((consp remote) (car remote))
@@ -345,23 +344,19 @@
       (httpd-redirect proc (format "/tags?name=%s" (url-hexify-string new-tag))))))
 
 (defun board-check-rate-limit (ip)
-  "Return T if IP is allowed to post, NIL if limited.
-Limit: 5 posts per hour."
   (let* ((now (float-time))
          (one-hour-ago (- now 3600))
-         ;; Clean up old logs and filter for this specific IP
-         (user-posts (cl-remove-if-not
-                      (lambda (entry)
-                        (and (string= (car entry) ip)
-                             (> (cdr entry) one-hour-ago)))
-                      board-post-log)))
-    (if (< (length user-posts) 5)
+         (setq board-post-log 
+               (cl-remove-if (lambda (entry) (< (cdr entry) one-hour-ago)) 
+                             board-post-log))
+         
+         (this-user-posts (cl-remove-if-not
+                           (lambda (entry) (string= (car entry) ip))
+                           board-post-log)))
+     (if (< (length this-user-posts) 5)
         (progn
-          ;; Record this attempt
           (push (cons ip now) board-post-log)
-          t)
+          t) ;; Allow
       nil)))
-
-
 
 (provide 'controller)
