@@ -241,24 +241,25 @@
    "</div></div>"
    (render-footer)))
 
-(defun render-rate-limit-page (ip wait-time)
-  (concat
-   (render-header "Rate Limited")
-   (format "<div class='container' style='display:flex; justify-content:center; align-items:center; height:50vh;'>
-             <div class='rate-limit-error' style='color: #ff4444; border: 1px solid #ff4444; 
-                          padding: 20px; width: 400px; text-align: center; 
-                          font-family: monospace; background: #1a0000; box-shadow: 0 0 15px rgba(255,0,0,0.5);'>
-               <b style='font-size: 1.5em;'>[!] RATE LIMIT REACHED</b><br><br>
-               <span style='font-size: 1em; color: #ccc;'>
-                 IP: %s<br><br>
-                 Max 5 posts per hour.<br>
-                 Please wait about %d seconds.
-               </span><br><br>
-               <a href='/home' style='color:#888; text-decoration:none;'>[ Return to Board ]</a>
-             </div>
-           </div>" ip wait-time)
-   (render-footer)))
-
+(defun render-rate-limit-page (&optional ip wait-time)
+ (let ((display-ip (or ip "Unknown"))
+        (display-time (or wait-time 60)))
+    (concat
+     (render-header "Rate Limited")
+     (format "<div class='container' style='display:flex; justify-content:center; align-items:center; height:50vh;'>
+               <div class='rate-limit-error' style='color: #ff4444; border: 1px solid #ff4444; 
+                            padding: 20px; width: 400px; text-align: center; 
+                            font-family: monospace; background: #1a0000; box-shadow: 0 0 15px rgba(255,0,0,0.5);'>
+                 <b style='font-size: 1.5em;'>[!] RATE LIMIT REACHED</b><br><br>
+                 <span style='font-size: 1em; color: #ccc;'>
+                   IP: %s<br><br>
+                   Max 5 posts per hour.<br>
+                   Please wait about %d seconds.
+                 </span><br><br>
+                 <a href='/home' style='color:#888; text-decoration:none;'>[ Return to Board ]</a>
+               </div>
+             </div>" display-ip display-time)
+     (render-footer))))
 
 
 (provide 'view)
