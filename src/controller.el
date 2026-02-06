@@ -127,25 +127,26 @@
 
 ;; --- POST HANDLING ---
 
+(require 'cl-lib) ; Crucial: ensures 'cl-find-if' and 'cl-remove' work
 
 (defun board-handle-post (proc args)
   (let ((ip (board-get-ip proc args)))
     (cond
-     ;; 1. Check if the user is in the banned list
+     ;; 1. Ban Check
      ((member ip board-banned-ips)      
       (with-httpd-buffer proc "text/html"
-        (insert "<html><body style='background:black;color:red;text-align:center;padding-top:50px;font-family:sans-serif;'>")
-        (insert "<h1>BANNED!</h1>")
-        (insert "<img src='/hello.jpg' style='max-width:800px; border: 5px solid red;'><br>")
-        (insert (format "<p style='font-size:1.5em;'>Your IP (%s) has been restricted.</p>" ip))
-        (insert "</body></html>")))
+        (insert "<html><body style='background:black;color:red;text-align:center;padding-top:50px;font-family:sans-serif;'>
+                 <h1>BANNED!</h1>
+                 <img src='/hello.jpg' style='max-width:800px; border: 5px solid red;'><br>
+                 <p style='font-size:1.5em;'>Your IP (" ip ") has been restricted.</p>
+                 </body></html>")))
 
-     ;; 2. Check Rate Limit (Matches the model expecting ip and post-id)
+     ;; 2. Rate Limit Check
      ((not (board-check-rate-limit ip (1+ board-post-count)))
       (with-httpd-buffer proc "text/html"
         (insert (render-rate-limit-page ip 60))))
 
-     ;; 3. Valid Post Path
+     ;; 3. Valid Post
      (t 
       (let* ((comment (board-get-arg args "comment")) 
              (subj (board-get-arg args "subject")) 
@@ -157,7 +158,6 @@
         (when (and comment (not (string-empty-p (string-trim comment))))
           (setq board-post-count (1+ board-post-count))
           (let* ((nt (generate-tripcode name-raw))
-                 ;; Tag logic: only for OPs (Original Posts)
                  (tags (if is-reply nil 
                          (if (or (null tags-raw) (string-empty-p (string-trim tags-raw))) 
                              '("shitpost") 
@@ -176,14 +176,13 @@
                        (thread (cl-find-if (lambda (tt) (= (plist-get (plist-get tt :op) :id) tid)) board-threads)))
                   (when thread
                     (plist-put thread :replies (append (plist-get thread :replies) (list new)))
-                    ;; "Bump" the thread to the top
+                    ;; Update list to bump thread
                     (setq board-threads (cons thread (cl-remove thread board-threads :test 'equal)))))
-              ;; Push new thread to the list
               (push (list :op new :replies nil) board-threads))
             
             (board-save)))
         
-        ;; Redirect and Set Cookie for the name
+        ;; Execution of the redirect
         (let ((target (if is-reply (format "/thread?id=%s" resto) "/home")))
           (httpd-send-header proc "text/html" 302 
                              :Location target 
