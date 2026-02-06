@@ -95,24 +95,4 @@
       (setq all-tags (append (plist-get (plist-get thread :op) :tags) all-tags)))
     (sort (delete-dups all-tags) 'string<)))
 
-(defvar board-post-log nil
-  "a list of ip timestamp")
-
-(defun board-check-rate-limit (ip)
-  (let* ((now (float-time))
-         (one-hour-ago (- now 3600)))
-
-    (setq board-post-log 
-          (cl-remove-if (lambda (entry) (< (cdr entry) one-hour-ago)) 
-                        board-post-log))
-
-    (let ((post-count (cl-count-if (lambda (entry) (string= (car entry) ip)) 
-                                  board-post-log)))
-      (if (< post-count 5)
-          (progn
-
-            (push (cons ip now) board-post-log)
-            t)
-        nil))))
-
 (provide 'model)

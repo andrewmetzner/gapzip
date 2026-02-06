@@ -127,12 +127,11 @@
 
 ;; --- POST HANDLING ---
 
-(require 'cl-lib) ; Crucial: ensures 'cl-find-if' and 'cl-remove' work
+(require 'cl-lib)
 
 (defun board-handle-post (proc args)
   (let ((ip (board-get-ip proc args)))
     (cond
-     ;; 1. Ban Check
      ((member ip board-banned-ips)      
       (with-httpd-buffer proc "text/html"
         (insert "<html><body style='background:black;color:red;text-align:center;padding-top:50px;font-family:sans-serif;'>
@@ -140,13 +139,9 @@
                  <img src='/hello.jpg' style='max-width:800px; border: 5px solid red;'><br>
                  <p style='font-size:1.5em;'>Your IP (" ip ") has been restricted.</p>
                  </body></html>")))
-
-     ;; 2. Rate Limit Check
      ((not (board-check-rate-limit ip (1+ board-post-count)))
       (with-httpd-buffer proc "text/html"
         (insert (render-rate-limit-page ip 60))))
-
-     ;; 3. Valid Post
      (t 
       (let* ((comment (board-get-arg args "comment")) 
              (subj (board-get-arg args "subject")) 
@@ -176,13 +171,11 @@
                        (thread (cl-find-if (lambda (tt) (= (plist-get (plist-get tt :op) :id) tid)) board-threads)))
                   (when thread
                     (plist-put thread :replies (append (plist-get thread :replies) (list new)))
-                    ;; Update list to bump thread
                     (setq board-threads (cons thread (cl-remove thread board-threads :test 'equal)))))
               (push (list :op new :replies nil) board-threads))
             
             (board-save)))
-        
-        ;; Execution of the redirect
+
         (let ((target (if is-reply (format "/thread?id=%s" resto) "/home")))
           (httpd-send-header proc "text/html" 302 
                              :Location target 
@@ -276,10 +269,7 @@
         (board-save))
       (httpd-redirect proc (format "/tags?name=%s" (url-hexify-string new-tag))))))
 
-;; MOVED LOGIC TO model.el for cleaner separation, 
-;; but keeping this placeholder as a reminder.
-(defun board-check-rate-limit (ip post-id)
-  (model-check-rate-limit ip post-id))
+(defalias 'model-check-rate-limit 'board-check-rate-limit)
 
 (defun board-get-ip (proc &optional args)
   (let* ((contact (process-contact proc t))
