@@ -241,16 +241,23 @@
    "</div></div>"
    (render-footer)))
 
-(defun render-rate-limit-box ()
-  "Returns a standalone HTML string for the rate limit warning box."
-  "<div class='rate-limit-error' style='color: #ff4444; border: 1px solid #ff4444; 
-                padding: 10px; margin: 10px auto; width: 345px; text-align: center; 
-                font-family: monospace; background: #1a0000; box-shadow: 0 0 10px rgba(255,0,0,0.5);'>
-     <b style='font-size: 1.2em;'>[!] RATE LIMIT REACHED</b><br>
-     <span style='font-size: 0.85em; color: #ccc;'>
-       Max 5 posts per hour. Please wait before posting again.
-     </span>
-   </div>")
+(defun render-rate-limit-page (ip wait-time)
+  (concat
+   (render-header "Rate Limited")
+   (format "<div class='container' style='display:flex; justify-content:center; align-items:center; height:50vh;'>
+             <div class='rate-limit-error' style='color: #ff4444; border: 1px solid #ff4444; 
+                          padding: 20px; width: 400px; text-align: center; 
+                          font-family: monospace; background: #1a0000; box-shadow: 0 0 15px rgba(255,0,0,0.5);'>
+               <b style='font-size: 1.5em;'>[!] RATE LIMIT REACHED</b><br><br>
+               <span style='font-size: 1em; color: #ccc;'>
+                 IP: %s<br><br>
+                 Max 5 posts per hour.<br>
+                 Please wait about %d seconds.
+               </span><br><br>
+               <a href='/home' style='color:#888; text-decoration:none;'>[ Return to Board ]</a>
+             </div>
+           </div>" ip wait-time)
+   (render-footer)))
 
 
 
