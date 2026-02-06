@@ -151,10 +151,10 @@ x  |          |         |    |       |         |x
           (insert "</div>"))
         (insert (render-footer))))))
 
-
 (defun httpd/thread (proc path query args)
   (let* ((id-param (cadr (assoc "id" query)))
          (id (if id-param (string-to-number id-param) 0))
+         (error-msg (cadr (assoc "error" query))) ;; Add this line
          (admin (board-is-admin-p proc args)) 
          (remembered-name (board-get-cookie-name args))
          (tt (cl-find-if (lambda (x) (= (plist-get (plist-get x :op) :id) id)) board-threads))
@@ -165,6 +165,10 @@ x  |          |         |    |       |         |x
     (with-httpd-buffer proc "text/html" 
       (insert (render-header page-title admin (format "/thread/rss?id=%d" id)))
       (insert-board-ascii)
+
+      (when (string= error-msg "ratelimit")
+        (insert (render-rate-limit-page)))
+
       (insert (format "<div><a href='/home'>[Back]</a></div><hr><form method='POST' action='/post-entry'><input type='hidden' name='resto' value='%d'><input name='name' placeholder='Name#Trip' value='%s' style='margin-bottom:5px;'><br><textarea name='comment' rows='4' style='width:345px;'></textarea><br><input type='submit' value='Reply'></form><hr>" id (board-escape-html remembered-name)))
       (if tt (insert (render-thread-html tt t admin)) (insert "Not found")) 
       (insert (render-footer)))))
