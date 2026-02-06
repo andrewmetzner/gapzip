@@ -5,11 +5,13 @@
 ;; --- UTILITY ---
 
 (defun board-get-forwarded-ip (args)
+  "Extracts the IP from X-Forwarded-For header if behind a proxy."
   (let ((xff (cadr (assoc "X-Forwarded-For" args))))
     (when xff
       (car (split-string xff ",")))))
 
 (defun board-get-ip (proc &optional args)
+  "Determines the user's IP address, accounting for local vs remote connections."
   (let* ((contact (process-contact proc t))
          (remote (plist-get contact :remote))
          (direct-ip
@@ -25,6 +27,7 @@
       direct-ip)))
 
 (defun board-is-admin-p (proc args)
+  "Checks if the current session cookie matches the admin password."
   (let ((cookie (cadr (assoc "Cookie" args)))) 
     (and cookie (string-match (format "session=%s" (regexp-quote board-admin-password)) cookie))))
 
@@ -152,7 +155,6 @@
       (with-httpd-buffer proc "text/html"
         (insert "<html><body style='background:black;color:red;text-align:center;padding-top:50px;font-family:sans-serif;'>
                  <h1>BANNED!</h1>
-                 <img src='/hello.jpg' style='max-width:800px; border: 5px solid red;'><br>
                  <p style='font-size:1.5em;'>Your IP (" ip ") has been restricted.</p>
                  </body></html>")))
      ((not (board-check-rate-limit ip (1+ board-post-count)))
@@ -187,6 +189,7 @@
                        (thread (cl-find-if (lambda (tt) (= (plist-get (plist-get tt :op) :id) tid)) board-threads)))
                   (when thread
                     (plist-put thread :replies (append (plist-get thread :replies) (list new)))
+                    ;; Bump thread to top
                     (setq board-threads (cons thread (cl-remove thread board-threads :test 'equal)))))
               (push (list :op new :replies nil) board-threads))
             
