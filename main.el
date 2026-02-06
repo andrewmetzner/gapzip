@@ -287,8 +287,8 @@ x  |          |         |    |       |         |x
          (admin (board-is-admin-p proc args)))
     (if (or admin (board-check-rate-limit ip (1+ board-post-count)))
         (board-handle-post proc args)
-      (httpd-send-header proc "text/html" 302 :Location "/home?error=ratelimit")
-      (process-send-string proc ""))))
+      (with-httpd-buffer proc "text/html"
+        (insert (render-rate-limit-page ip))))))
 
 (defun httpd/ (proc path query args) (httpd-redirect proc "/home"))
 

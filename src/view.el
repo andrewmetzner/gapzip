@@ -241,14 +241,19 @@
    "</div></div>"
    (render-footer)))
 
-(defun render-rate-limit-page (ip wait-mins)
-  (concat
-   "<html><body style='background-color:black;color:red;font-family:monospace;padding:50px;'>"
-   "<h1>[ RATE LIMIT REACHED ]</h1>"
-   "<hr>"
-   "<p><b>IP:</b> " ip "</p>"
-   "<p><b>REASON:</b> Max 5 posts per hour.</p>"
-   "<p><a href='/home' style='color:white;'>[ RETURN HOME ]</a></p>"
-   "</body></html>"))
+(defun render-rate-limit-page (ip)
+  (concat 
+   (render-header "Rate Limited" nil)
+   "<div style='text-align:center; margin-top:50px;'>
+      <div style='color: #ff4444; border: 2px solid #ff4444; padding: 20px; 
+                  display: inline-block; background: #1a0000; font-family: monospace;'>
+        <h1 style='margin:0;'>[!] RATE LIMIT REACHED</h1>
+        <hr style='border:1px solid #ff4444;'>
+        <p>IP: " ip "</p>
+        <p>You have reached the limit of 5 posts per hour.</p>
+        <p style='font-size: 1.2em;'><a href='/home' style='color:white;'>[ RETURN HOME ]</a></p>
+      </div>
+    </div>"
+   (render-footer)))
 
 (provide 'view)
