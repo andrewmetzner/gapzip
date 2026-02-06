@@ -1,10 +1,28 @@
 ;;; controller.el --- Post & Admin Logic
 (require 'model)
+(require 'cl-lib)
+
+;; --- UTILITY ---
 
 (defun board-get-forwarded-ip (args)
   (let ((xff (cadr (assoc "X-Forwarded-For" args))))
     (when xff
       (car (split-string xff ",")))))
+
+(defun board-get-ip (proc &optional args)
+  (let* ((contact (process-contact proc t))
+         (remote (plist-get contact :remote))
+         (direct-ip
+          (cond
+           ((vectorp remote) 
+            (let ((addr (format-network-address remote t)))
+              (if (string-match "^\\([^:]+\\):" addr) (match-string 1 addr) addr)))
+           ((consp remote) (car remote))
+           (t "127.0.0.1")))
+         (forwarded-ip (and args (board-get-forwarded-ip args))))
+    (if (and forwarded-ip (string= direct-ip "127.0.0.1"))
+        forwarded-ip
+      direct-ip)))
 
 (defun board-is-admin-p (proc args)
   (let ((cookie (cadr (assoc "Cookie" args)))) 
@@ -64,7 +82,7 @@
                      :Set-Cookie "session=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT")
   (process-send-string proc ""))
 
-;; --- EDIT LOGIC ---
+;; --- EDIT & UPDATE ---
 
 (defun board-admin-edit-route (proc path query args)
   (if (not (board-is-admin-p proc args)) 
@@ -127,8 +145,6 @@
 
 ;; --- POST HANDLING ---
 
-(require 'cl-lib)
-
 (defun board-handle-post (proc args)
   (let ((ip (board-get-ip proc args)))
     (cond
@@ -182,108 +198,5 @@
                              :Set-Cookie (format "preferred_name=%s; Path=/; Max-Age=31536000" 
                                                  (url-hexify-string name-raw)))
           (process-send-string proc "")))))))
-;; (defun board-handle-post (proc args)
-;;   (let ((ip (board-get-ip proc args)))
-;;     (cond
-;;      ((member ip board-banned-ips)      
-;;       (with-httpd-buffer proc "text/html"
-;;         (insert "<html><body style='background:black;color:red;text-align:center;padding-top:50px;font-family:sans-serif;'>")
-;;         (insert "<h1>BANNED!</h1>")
-;;         (insert "<img src='/hello.jpg' style='max-width:800px; border: 5px solid red;'><br>")
-;;         (insert (format "<p style='font-size:1.5em;'>Your IP (%s) has been restricted.</p>" ip))
-;;         (insert "</body></html>")))
-
-;;      ((not (board-check-rate-limit ip (1+ board-post-count)))
-;;       (with-httpd-buffer proc "text/html"
-;;         (insert (render-rate-limit-page ip 60))))
-
-;;      (t 
-;;       (let* ((comment (board-get-arg args "comment")) 
-;;              (subj (board-get-arg args "subject")) 
-;;              (tags-raw (board-get-arg args "tags")) 
-;;              (name-raw (or (board-get-arg args "name") "Anonymous"))
-;;              (resto (board-get-arg args "resto")) 
-;;              (is-reply (and resto (not (string-empty-p (string-trim resto))))))
-        
-;;         (when (and comment (not (string-empty-p (string-trim comment))))
-;;           (setq board-post-count (1+ board-post-count))
-;;           (let* ((nt (generate-tripcode name-raw))
-;;                  (tags (if is-reply nil 
-;;                          (if (or (null tags-raw) (string-empty-p (string-trim tags-raw))) 
-;;                              '("shitpost") 
-;;                            (mapcar (lambda (s) (downcase (string-trim s))) (split-string tags-raw "," t)))))
-;;                  (new (list :id board-post-count
-;;                             :name (car nt)
-;;                             :trip (cadr nt)
-;;                             :subject (or subj "")
-;;                             :body comment
-;;                             :timestamp (format-time-string "%Y-%m-%d %H:%M:%S")
-;;                             :ip ip
-;;                             :tags tags)))
-            
-;;             (if is-reply
-;;                 (let* ((tid (string-to-number resto))
-;;                        (thread (cl-find-if (lambda (tt) (= (plist-get (plist-get tt :op) :id) tid)) board-threads)))
-;;                   (when thread
-;;                     (plist-put thread :replies (append (plist-get thread :replies) (list new)))
-;;                     (setq board-threads (cons thread (remove thread board-threads)))))
-;;               (push (list :op new :replies nil) board-threads))
-            
-;;             (board-save)))
-        
-;;         (let ((target (if is-reply (format "/thread?id=%s" resto) "/home")))
-;;           (httpd-send-header proc "text/html" 302 
-;;                              :Location target 
-;;                              :Set-Cookie (format "preferred_name=%s; Path=/; Max-Age=31536000" 
-;;                                                  (url-hexify-string name-raw)))
-;;           (process-send-string proc "")))))))
-
-(defun board-admin-update-tags-route (proc path query args)
-  (if (not (board-is-admin-p proc args)) 
-      (httpd-error proc 403)
-    (let* ((id (string-to-number (or (board-get-arg args "id") "0")))
-           (tags-raw (board-get-arg args "tags"))
-           (redir (board-get-arg args "redirect"))
-           (thread (cl-find-if (lambda (x) (= (plist-get (plist-get x :op) :id) id)) board-threads)))
-      (when thread
-        (let* ((op (plist-get thread :op))
-               (new-tags (mapcar (lambda (s) (downcase (string-trim s))) 
-                                 (split-string tags-raw "," t))))
-          (plist-put op :tags new-tags)
-          (board-save)))
-      (let ((target (if (string= redir "home") "/home" (format "/thread?id=%d" id))))
-        (httpd-redirect proc target)))))
-
-(defun board-admin-rename-tag-global-route (proc path query args)
-  (if (not (board-is-admin-p proc args))
-      (httpd-error proc 403)
-    (let* ((old-tag (downcase (string-trim (or (board-get-arg args "old") ""))))
-           (new-tag (downcase (string-trim (or (board-get-arg args "new") "")))))
-      (unless (or (string-empty-p old-tag) (string-empty-p new-tag))
-        (dolist (tt board-threads)
-          (let* ((op (plist-get tt :op))
-                 (tags (plist-get op :tags)))
-            (when (member old-tag tags)
-              (setf (plist-get op :tags)
-                    (mapcar (lambda (tag) (if (string= tag old-tag) new-tag tag)) tags)))))
-        (board-save))
-      (httpd-redirect proc (format "/tags?name=%s" (url-hexify-string new-tag))))))
-
-(defalias 'model-check-rate-limit 'board-check-rate-limit)
-
-(defun board-get-ip (proc &optional args)
-  (let* ((contact (process-contact proc t))
-         (remote (plist-get contact :remote))
-         (direct-ip
-          (cond
-           ((vectorp remote) 
-            (let ((addr (format-network-address remote t)))
-              (if (string-match "^\\([^:]+\\):" addr) (match-string 1 addr) addr)))
-           ((consp remote) (car remote))
-           (t "127.0.0.1")))
-         (forwarded-ip (and args (board-get-forwarded-ip args))))
-    (if (and forwarded-ip (string= direct-ip "127.0.0.1"))
-        forwarded-ip
-      direct-ip)))
 
 (provide 'controller)
