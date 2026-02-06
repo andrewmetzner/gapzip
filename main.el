@@ -125,13 +125,9 @@ x  |          |         |    |       |         |x
         (insert-board-ascii)
         (insert (render-tag-overview recent-tags))
 
+        ;; --- Fixed Rate Limit Injection ---
         (when (string= error-msg "ratelimit")
-          (insert "<div style='color: #ff4444; border: 1px solid #ff4444; padding: 10px; 
-                         margin: 10px auto; width: 345px; text-align: center; 
-                         font-family: monospace; background: #1a0000;'>
-                    [!] RATE LIMIT REACHED<br>
-                    <span style='font-size:0.8em;'>Max 5 posts per hour. Please wait.</span>
-                  </div>"))
+          (insert (render-rate-limit-page))) 
         
         (insert (format "<h3></h3><form method='POST' action='/post-entry'>
                           <input name='name' placeholder='Name#Trip' value='%s'>
@@ -154,6 +150,7 @@ x  |          |         |    |       |         |x
                         (format "<a href='/home?page=%d'>[%d]</a> " p p)))))
           (insert "</div>"))
         (insert (render-footer))))))
+
 
 (defun httpd/thread (proc path query args)
   (let* ((id-param (cadr (assoc "id" query)))
