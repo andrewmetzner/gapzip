@@ -14,20 +14,20 @@
 ;;         forwarded-ip
 ;;       direct-ip)))
 
-(defun board-get-ip (proc &optional args)
-  (let* ((contact (process-contact proc t))
-         (remote (plist-get contact :remote))
-         (direct-ip
-          (cond
-           ((vectorp remote) 
-            (let ((addr (format-network-address remote t)))
-              (if (string-match "^\\([^:]+\\):" addr) (match-string 1 addr) addr)))
-           ((consp remote) (car remote))
-           (t "127.0.0.1")))
-         (forwarded-ip (and args (board-get-forwarded-ip args))))
-    (if (and forwarded-ip (string= direct-ip "127.0.0.1"))
-        forwarded-ip
-      direct-ip)))
+;; (defun board-get-ip (proc &optional args)
+;;   (let* ((contact (process-contact proc t))
+;;          (remote (plist-get contact :remote))
+;;          (direct-ip
+;;           (cond
+;;            ((vectorp remote) 
+;;             (let ((addr (format-network-address remote t)))
+;;               (if (string-match "^\\([^:]+\\):" addr) (match-string 1 addr) addr)))
+;;            ((consp remote) (car remote))
+;;            (t "127.0.0.1")))
+;;          (forwarded-ip (and args (board-get-forwarded-ip args))))
+;;     (if (and forwarded-ip (string= direct-ip "127.0.0.1"))
+;;         forwarded-ip
+;;       direct-ip)))
 
 (defun board-get-forwarded-ip (args)
   (let ((xff (cadr (assoc "X-Forwarded-For" args))))
@@ -346,17 +346,32 @@
 (defun board-check-rate-limit (ip)
   (let* ((now (float-time))
          (one-hour-ago (- now 3600))
-         (setq board-post-log 
-               (cl-remove-if (lambda (entry) (< (cdr entry) one-hour-ago)) 
-                             board-post-log))
-         
-         (this-user-posts (cl-remove-if-not
-                           (lambda (entry) (string= (car entry) ip))
-                           board-post-log)))
-     (if (< (length this-user-posts) 5)
+         (this-user-posts nil))
+    (setq board-post-log 
+          (cl-remove-if (lambda (entry) (< (cdr entry) one-hour-ago)) 
+                        board-post-log))
+    (setq this-user-posts 
+          (cl-remove-if-not (lambda (entry) (string= (car entry) ip)) 
+                            board-post-log))
+    (if (< (length this-user-posts) 5)
         (progn
           (push (cons ip now) board-post-log)
-          t) ;; Allow
+          t)
       nil)))
+
+(defun board-get-ip (proc &optional args)
+  (let* ((contact (process-contact proc t))
+         (remote (plist-get contact :remote))
+         (direct-ip
+          (cond
+           ((vectorp remote) 
+            (let ((addr (format-network-address remote t)))
+              (if (string-match "^\\([^:]+\\):" addr) (match-string 1 addr) addr)))
+           ((consp remote) (car remote))
+           (t "127.0.0.1")))
+         (forwarded-ip (and args (board-get-forwarded-ip args))))
+    (if (and forwarded-ip (string= direct-ip "127.0.0.1"))
+        forwarded-ip
+      direct-ip)))
 
 (provide 'controller)
