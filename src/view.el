@@ -249,7 +249,7 @@
                 font-family: monospace; background: #1a0000; box-shadow: 0 0 10px rgba(255,0,0,0.5);'>
      <b style='font-size: 1.2em;'>[!] RATE LIMIT REACHED</b><br>
      <span style='font-size: 0.85em; color: #ccc;'>
-       IP: %s | Wait: %s seconds<br>
+       IP: %s<br>
        Max 5 posts per hour.
      </span>
    </div>" 
