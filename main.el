@@ -268,6 +268,8 @@ x  |          |         |    |       |         |x
         (insert (render-footer))))))
 
 
+
+
 ;; (defun httpd/tags (proc path query args)
 ;;   (let* ((tag-raw (cadr (assoc "name" query)))
 ;;          (tag-name (if tag-raw (url-unhex-string tag-raw) ""))
@@ -317,7 +319,6 @@ x  |          |         |    |       |         |x
 ;;       (insert "</body></html>"))))
 
 (defun httpd/tags/rss (proc path query args)
-  "RSS feed for a specific tag."
   (let* ((tag-raw (cadr (assoc "name" query)))
          (tag (if tag-raw (downcase (url-unhex-string tag-raw)) ""))
          (filtered (cl-remove-if-not 
@@ -325,8 +326,6 @@ x  |          |         |    |       |         |x
                     board-threads)))
     (with-httpd-buffer proc "application/rss+xml"
       (insert (render-rss-feed filtered (format "goatse.world - Tag: %s" tag))))))
-
-;; --- RSS ROUTES ---
 
 (defun httpd/rss (proc path query args)
   "Global RSS feed."
@@ -341,6 +340,27 @@ x  |          |         |    |       |         |x
         (with-httpd-buffer proc "application/rss+xml"
           (insert (render-thread-rss tt)))
       (httpd-error proc 404))))
+
+(defun httpd/admin/log (proc path query args)
+  (if (not (board-is-admin-p proc args))
+      (httpd-error proc 403)
+    (with-httpd-buffer proc "text/html"
+      (insert (render-header "Traffic Log" t))
+      (insert "<h2>Recent Activity (60m)</h2>")
+      (insert "<table style='width:100%; font-family:monospace; background:#111;'>
+               <tr style='color:#888;'><th>IP</th><th>Post</th><th>Expires</th><th>Action</th></tr>")
+      (dolist (entry board-post-log)
+        (let* ((ip (car entry))
+               (pid (nth 2 entry))
+               (expires (round (/ (- (+ (nth 1 entry) 3600) (float-time)) 60))))
+          (insert (format "<tr><td>%s</td><td>#%s</td><td>%dm</td><td><a href='/admin/ban?ip=%s'>[BAN]</a></td></tr>" 
+                          ip pid expires ip))))
+      (insert "</table><br><a href='/admin/clear-log'>[Clear All Limits]</a>"))))
+
+(defun httpd/admin/clear-log (proc path query args)
+  (if (board-is-admin-p proc args)
+      (progn (setq board-post-log nil) (board-save) (httpd-redirect proc "/admin/log"))
+    (httpd-error proc 403)))
 
 ;; --- ADMIN ROUTES ---
 
@@ -372,6 +392,8 @@ x  |          |         |    |       |         |x
 
 ;; (defun httpd/post-entry (proc path query args) (board-handle-post proc args))
 (defun httpd/ (proc path query args) (httpd-redirect proc "/home"))
+
+
 
 (board-load) (httpd-start)
 (princ (format "\nBoard active at: http://localhost:%d/home\n" httpd-port))

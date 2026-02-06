@@ -1,34 +1,6 @@
 ;;; controller.el --- Post & Admin Logic
 (require 'model)
 
-;; (defun board-get-ip (proc &optional args)
-;;   (let* ((contact (process-contact proc t))
-;;          (remote (plist-get contact :remote))
-;;          (direct-ip
-;;           (cond
-;;            ((vectorp remote) (format-network-address remote t))
-;;            ((consp remote) (car remote))
-;;            (t "127.0.0.1")))
-;;          (forwarded-ip (and args (board-get-forwarded-ip args))))
-;;     (if (and forwarded-ip (string= direct-ip "127.0.0.1"))
-;;         forwarded-ip
-;;       direct-ip)))
-
-;; (defun board-get-ip (proc &optional args)
-;;   (let* ((contact (process-contact proc t))
-;;          (remote (plist-get contact :remote))
-;;          (direct-ip
-;;           (cond
-;;            ((vectorp remote) 
-;;             (let ((addr (format-network-address remote t)))
-;;               (if (string-match "^\\([^:]+\\):" addr) (match-string 1 addr) addr)))
-;;            ((consp remote) (car remote))
-;;            (t "127.0.0.1")))
-;;          (forwarded-ip (and args (board-get-forwarded-ip args))))
-;;     (if (and forwarded-ip (string= direct-ip "127.0.0.1"))
-;;         forwarded-ip
-;;       direct-ip)))
-
 (defun board-get-forwarded-ip (args)
   (let ((xff (cadr (assoc "X-Forwarded-For" args))))
     (when xff
@@ -113,16 +85,12 @@
           (insert (format "
             <form method='POST' action='/admin/update'>
               <input type='hidden' name='id' value='%d'>
-              
               <label>Author:</label><br>
               <input type='text' name='name' value='%s' style='width:100%%; margin-bottom:10px;'><br>
-              
               <label>Subject:</label><br>
               <input type='text' name='subject' value='%s' style='width:100%%; margin-bottom:10px;'><br>
-              
               <label>Comment:</label><br>
               <textarea name='comment' rows='12' cols='80' style='width:100%%; font-family:monospace;'>%s</textarea><br><br>
-              
               <input type='submit' value='Save Changes'>
             </form>" 
             id 
@@ -142,124 +110,39 @@
         (let ((found nil))
           (dolist (tt board-threads)
             (let ((op (plist-get tt :op)))
-              ;; Check if it's the OP
               (if (= (plist-get op :id) id)
                   (progn 
                     (plist-put op :name new-name)
                     (plist-put op :subject new-subj)
                     (plist-put op :body new-body)
                     (setq found t))
-                ;; Check the replies
                 (dolist (r (plist-get tt :replies))
                   (when (= (plist-get r :id) id)
                     (plist-put r :name new-name)
                     (plist-put r :subject new-subj)
                     (plist-put r :body new-body)
                     (setq found t))))))
-          (when found 
-            (board-save)
-           ; (message "ADMIN: Updated post #%d" id)
-	    )
-	  ))
+          (when found (board-save))))
       (httpd-redirect proc "/home"))))
 
 ;; --- POST HANDLING ---
 
-;; ;; --- UPDATED board-handle-post IN controller.el ---
-;; (defun board-handle-post (proc args)
-;;   (let ((ip (board-get-ip proc args)))
-;;     (if (member ip board-banned-ips) 	
-;;         (with-httpd-buffer proc "text/html"
-;;           (insert "<html><body style='background:black;color:red;text-align:center;padding-top:50px;font-family:sans-serif;'>")
-;;           (insert "<h1>BANNED!</h1>")
-;;           (insert "<img src='/hello.jpg' style='max-width:800px; border: 5px solid red;'><br>")
-;;           (insert (format "<p style='font-size:1.5em;'>Your IP (%s) has been restricted.</p>" ip))
-;;           (insert "</body></html>"))
-      
-;;       (let* ((comment (board-get-arg args "comment")) 
-;;              (subj (board-get-arg args "subject")) 
-;;              (tags-raw (board-get-arg args "tags")) 
-;;              (name-raw (or (board-get-arg args "name") "Anonymous"))
-;;              (resto (board-get-arg args "resto")) 
-;;              (is-reply (and resto (not (string-empty-p (string-trim resto))))))
-;;         (when (and comment (not (string-empty-p (string-trim comment))))
-;;           (setq board-post-count (1+ board-post-count))
-;;           (let* ((nt (generate-tripcode name-raw))
-;;                  (tags (if is-reply nil 
-;;                          (if (or (null tags-raw) (string-empty-p (string-trim tags-raw))) 
-;;                              '("shitpost") 
-;;                            (mapcar (lambda (s) (downcase (string-trim s))) (split-string tags-raw "," t)))))
-;;                  (new (list :id board-post-count :name (car nt) :trip (cadr nt) :subject (or subj "") :body comment :timestamp (format-time-string "%Y-%m-%d %H:%M:%S") :ip ip :tags tags)))
-;;             (if is-reply 
-;;                 (let ((p (cl-find-if (lambda (tt) (= (plist-get (plist-get tt :op) :id) (string-to-number resto))) board-threads))) 
-;;                   (when p (plist-put p :replies (append (plist-get p :replies) (list new)))))
-;;               (push (list :op new :replies nil) board-threads)) 
-;;             (board-save)))
-;;         (let ((target (if is-reply (format "/thread?id=%s" resto) "/home")))
-;;           (httpd-send-header proc "text/html" 302 
-;;                              :Location target 
-;;                              :Set-Cookie (format "preferred_name=%s; Path=/; Max-Age=31536000" 
-;;                                                  (url-hexify-string name-raw)))
-;;           (process-send-string proc ""))))))
-
-;; (defun board-handle-post (proc args)
-;;   "Handle posting a new thread or a reply, with bump-on-reply logic."
-;;   (let ((ip (board-get-ip proc args)))
-;;     (if (member ip board-banned-ips) 	
-;;         (with-httpd-buffer proc "text/html"
-;;           (insert "<html><body style='background:black;color:red;text-align:center;padding-top:50px;font-family:sans-serif;'>")
-;;           (insert "<h1>BANNED!</h1>")
-;;           (insert "<img src='/hello.jpg' style='max-width:800px; border: 5px solid red;'><br>")
-;;           (insert (format "<p style='font-size:1.5em;'>Your IP (%s) has been restricted.</p>" ip))
-;;           (insert "</body></html>"))
-
-;;       (let* ((comment (board-get-arg args "comment")) 
-;;              (subj (board-get-arg args "subject")) 
-;;              (tags-raw (board-get-arg args "tags")) 
-;;              (name-raw (or (board-get-arg args "name") "Anonymous"))
-;;              (resto (board-get-arg args "resto")) 
-;;              (is-reply (and resto (not (string-empty-p (string-trim resto))))))
-;;         (when (and comment (not (string-empty-p (string-trim comment))))
-;;           (setq board-post-count (1+ board-post-count))
-;;           (let* ((nt (generate-tripcode name-raw))
-;;                  (tags (if is-reply nil 
-;;                          (if (or (null tags-raw) (string-empty-p (string-trim tags-raw))) 
-;;                              '("shitpost") 
-;;                            (mapcar (lambda (s) (downcase (string-trim s))) (split-string tags-raw "," t)))))
-;;                  (new (list :id board-post-count
-;;                             :name (car nt)
-;;                             :trip (cadr nt)
-;;                             :subject (or subj "")
-;;                             :body comment
-;;                             :timestamp (format-time-string "%Y-%m-%d %H:%M:%S")
-;;                             :ip ip
-;;                             :tags tags)))
-;;             ;; BUMP
-;;             (if is-reply
-;;                 (let* ((tid (string-to-number resto))
-;;                        (thread (cl-find-if (lambda (tt) (= (plist-get (plist-get tt :op) :id) tid)) board-threads)))
-;;                   (when thread
-;;                     (plist-put thread :replies (append (plist-get thread :replies) (list new)))
-;;                     (setq board-threads (cons thread (remove thread board-threads)))))
-;;               (push (list :op new :replies nil) board-threads))
-;;             (board-save)))
-        
-;;         (let ((target (if is-reply (format "/thread?id=%s" resto) "/home")))
-;;           (httpd-send-header proc "text/html" 302 
-;;                              :Location target 
-;;                              :Set-Cookie (format "preferred_name=%s; Path=/; Max-Age=31536000" 
-;;                                                  (url-hexify-string name-raw)))
-;;           (process-send-string proc ""))))))
 (defun board-handle-post (proc args)
   (let ((ip (board-get-ip proc args)))
-    (if (member ip board-banned-ips)     
-        (with-httpd-buffer proc "text/html"
-          (insert "<html><body style='background:black;color:red;text-align:center;padding-top:50px;font-family:sans-serif;'>")
-          (insert "<h1>BANNED!</h1>")
-          (insert "<img src='/hello.jpg' style='max-width:800px; border: 5px solid red;'><br>")
-          (insert (format "<p style='font-size:1.5em;'>Your IP (%s) has been restricted.</p>" ip))
-          (insert "</body></html>"))
+    (cond
+     ((member ip board-banned-ips)      
+      (with-httpd-buffer proc "text/html"
+        (insert "<html><body style='background:black;color:red;text-align:center;padding-top:50px;font-family:sans-serif;'>")
+        (insert "<h1>BANNED!</h1>")
+        (insert "<img src='/hello.jpg' style='max-width:800px; border: 5px solid red;'><br>")
+        (insert (format "<p style='font-size:1.5em;'>Your IP (%s) has been restricted.</p>" ip))
+        (insert "</body></html>")))
 
+     ((not (board-check-rate-limit ip (1+ board-post-count)))
+      (with-httpd-buffer proc "text/html"
+        (insert (render-rate-limit-page ip 60))))
+
+     (t 
       (let* ((comment (board-get-arg args "comment")) 
              (subj (board-get-arg args "subject")) 
              (tags-raw (board-get-arg args "tags")) 
@@ -267,13 +150,6 @@
              (resto (board-get-arg args "resto")) 
              (is-reply (and resto (not (string-empty-p (string-trim resto))))))
         
-        ;; --- DEBUG LOGS ---
-        ;; (message "DEBUG: Attempting to save post...")
-        ;; (if (and comment (string-match "\n" comment))
-        ;;     (message "DEBUG: Newline characters (\\n) FOUND in comment string.")
-        ;;   (message "DEBUG: No newlines found in comment string (check board-get-arg)."))
-        ;; ---------------------------
-
         (when (and comment (not (string-empty-p (string-trim comment))))
           (setq board-post-count (1+ board-post-count))
           (let* ((nt (generate-tripcode name-raw))
@@ -285,32 +161,27 @@
                             :name (car nt)
                             :trip (cadr nt)
                             :subject (or subj "")
-                            :body comment ;; SAVING RAW COMMENT
+                            :body comment
                             :timestamp (format-time-string "%Y-%m-%d %H:%M:%S")
                             :ip ip
                             :tags tags)))
             
-            ;; BUMP
             (if is-reply
                 (let* ((tid (string-to-number resto))
                        (thread (cl-find-if (lambda (tt) (= (plist-get (plist-get tt :op) :id) tid)) board-threads)))
                   (when thread
                     (plist-put thread :replies (append (plist-get thread :replies) (list new)))
-              
                     (setq board-threads (cons thread (remove thread board-threads)))))
-              
               (push (list :op new :replies nil) board-threads))
             
-            (board-save)
-           ;;  (message "DEBUG: Post %d successfully saved to database." board-post-count)
-	    ))
+            (board-save)))
         
         (let ((target (if is-reply (format "/thread?id=%s" resto) "/home")))
           (httpd-send-header proc "text/html" 302 
                              :Location target 
                              :Set-Cookie (format "preferred_name=%s; Path=/; Max-Age=31536000" 
                                                  (url-hexify-string name-raw)))
-          (process-send-string proc ""))))))
+          (process-send-string proc "")))))))
 
 (defun board-admin-update-tags-route (proc path query args)
   (if (not (board-is-admin-p proc args)) 
@@ -343,21 +214,10 @@
         (board-save))
       (httpd-redirect proc (format "/tags?name=%s" (url-hexify-string new-tag))))))
 
-(defun board-check-rate-limit (ip)
-  (let* ((now (float-time))
-         (one-hour-ago (- now 3600))
-         (this-user-posts nil))
-    (setq board-post-log 
-          (cl-remove-if (lambda (entry) (< (cdr entry) one-hour-ago)) 
-                        board-post-log))
-    (setq this-user-posts 
-          (cl-remove-if-not (lambda (entry) (string= (car entry) ip)) 
-                            board-post-log))
-    (if (< (length this-user-posts) 5)
-        (progn
-          (push (cons ip now) board-post-log)
-          t)
-      nil)))
+;; MOVED LOGIC TO model.el for cleaner separation, 
+;; but keeping this placeholder as a reminder.
+(defun board-check-rate-limit (ip post-id)
+  (model-check-rate-limit ip post-id))
 
 (defun board-get-ip (proc &optional args)
   (let* ((contact (process-contact proc t))

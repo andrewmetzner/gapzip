@@ -7,26 +7,57 @@
 (defvar board-root nil)
 (defvar board-banned-ips nil)
 
+;; (defun board-save ()
+;;   (let ((save-path (expand-file-name "data/board-data.el" board-root)))
+;;     (unless (file-exists-p (file-name-directory save-path))
+;;       (make-directory (file-name-directory save-path) t))
+;;     (with-temp-file save-path
+;;       (let ((print-length nil) (print-level nil) (print-quoted t))
+;;         (prin1 (list :count board-post-count :threads board-threads :bans board-banned-ips) (current-buffer))))))
+
+;; (defun board-load ()
+;;   (let ((load-path (expand-file-name "data/board-data.el" board-root)))
+;;     (if (file-exists-p load-path)
+;;         (with-temp-buffer
+;;           (insert-file-contents load-path)
+;;           (condition-case nil
+;;               (let ((data (read (current-buffer))))
+;;                 (setq board-post-count (or (plist-get data :count) 0))
+;;                 (setq board-threads (plist-get data :threads))
+;;                 (setq board-banned-ips (plist-get data :bans)))
+;;             (error (setq board-threads nil board-post-count 0))))
+;;       (setq board-threads nil board-post-count 0))))
+
+;; Add :log to the save list
 (defun board-save ()
   (let ((save-path (expand-file-name "data/board-data.el" board-root)))
-    (unless (file-exists-p (file-name-directory save-path))
-      (make-directory (file-name-directory save-path) t))
     (with-temp-file save-path
       (let ((print-length nil) (print-level nil) (print-quoted t))
-        (prin1 (list :count board-post-count :threads board-threads :bans board-banned-ips) (current-buffer))))))
+        (prin1 (list :count board-post-count 
+                     :threads board-threads 
+                     :bans board-banned-ips
+                     :log board-post-log) (current-buffer))))))
 
+;; Add :log to the load list
 (defun board-load ()
   (let ((load-path (expand-file-name "data/board-data.el" board-root)))
-    (if (file-exists-p load-path)
-        (with-temp-buffer
-          (insert-file-contents load-path)
-          (condition-case nil
-              (let ((data (read (current-buffer))))
-                (setq board-post-count (or (plist-get data :count) 0))
-                (setq board-threads (plist-get data :threads))
-                (setq board-banned-ips (plist-get data :bans)))
-            (error (setq board-threads nil board-post-count 0))))
-      (setq board-threads nil board-post-count 0))))
+    (when (file-exists-p load-path)
+      (with-temp-buffer
+        (insert-file-contents load-path)
+        (let ((data (read (current-buffer))))
+          (setq board-post-count (or (plist-get data :count) 0))
+          (setq board-threads (plist-get data :threads))
+          (setq board-banned-ips (plist-get data :bans))
+          (setq board-post-log (plist-get data :log)))))))
+
+(defun board-check-rate-limit (ip &optional post-id)
+  (let* ((now (float-time))
+         (one-hour-ago (- now 3600)))
+    (setq board-post-log (cl-remove-if (lambda (e) (< (nth 1 e) one-hour-ago)) board-post-log))
+    (let ((this-user-posts (cl-remove-if-not (lambda (e) (string= (car e) ip)) board-post-log)))
+      (if (< (length this-user-posts) 5)
+          (progn (push (list ip now post-id) board-post-log) t)
+        nil))))
 
 (defun board-classic-tripcode (pass)
   (let* ((perl-code "use Encode qw(encode); my $pw = substr($ARGV[0], 0, 8); my $sjv = encode('shiftjis', $pw); my $salt = substr($sjv . 'H.', 1, 2); $salt =~ tr/:;<=>?@[\\\\\\\]^_`/ABCDEFGabcdef/; $salt =~ s/[^.-z]/./g; print substr(crypt($sjv, $salt), -10);")

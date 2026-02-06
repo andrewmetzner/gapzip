@@ -1,7 +1,5 @@
 ;;; view.el --- Modular HTML Rendering Engine meowww
 
-;; (defvar site-root "http://localhost:8080")
-
 (defun board-get-config (filename default-val)
   (let ((file-path (expand-file-name (concat "data/" filename) 
                                      (or (bound-and-true-p board-root) default-directory))))
@@ -33,76 +31,74 @@
     (nreverse matches)))
 
 (defun render-footer ()
-  "Render the common footer for all pages."
   "<div class='footer' style='text-align:center; margin-top:20px; font-size:0.8em; color:#888;'>
-     Powered by <a href='https://github.com/andrewmetzner/gapzip' target='_blank'>Emacs Lisp</a>
-   </div>
-   </div></body></html>")
+      Powered by <a href='https://github.com/andrewmetzner/gapzip' target='_blank'>Emacs Lisp</a>
+    </div>
+    </div></body></html>")
 
 (defun render-header (title &optional is-admin feed-url)
   (format "<!DOCTYPE html><html><head>
-           <meta charset='UTF-8'>
-           <meta name='viewport' content='width=device-width, initial-scale=0.7'>
-           <link rel=\"icon\" type=\"image/png\" href=\"/public/gwf.png\">
-           <title>%s</title>
-           %s
-           <link rel='stylesheet' href='/public/style.css'>
-           <script>
-             function quote(id) { 
-               const box = document.querySelector('textarea[name=\"comment\"]'); 
-               if(box) { box.value += '>>' + id + '\\n'; box.focus(); } 
-             }
-           </script></head>
-           <body><div class='container'>
-           <div class='top-nav'>
-             <span class='board-title'>goatse.world</span> 
-             %s
-             %s
-           </div>" 
+            <meta charset='UTF-8'>
+            <meta name='viewport' content='width=device-width, initial-scale=0.7'>
+            <link rel=\"icon\" type=\"image/png\" href=\"/public/gwf.png\">
+            <title>%s</title>
+            %s
+            <link rel='stylesheet' href='/public/style.css'>
+            <script>
+              function quote(id) { 
+                const box = document.querySelector('textarea[name=\"comment\"]'); 
+                if(box) { box.value += '>>' + id + '\\n'; box.focus(); } 
+              }
+            </script></head>
+            <body><div class='container'>
+            <div class='top-nav'>
+              <span class='board-title'>goatse.world</span> 
+              %s
+              %s
+            </div>" 
           title
           (if feed-url (format "<link rel='alternate' type='application/rss+xml' title='%s' href='%s'>" title feed-url) "")
           (if feed-url (format " <a href='%s' class='rss-link'>[RSS get!]</a>" feed-url) "")
           (if is-admin 
-              "<b>Admin:</b> <a href='/admin/dashboard'>Bans</a> | <a href='/admin/logout'>Logout</a>" 
+              "<b>Admin:</b> <a href='/admin/dashboard'>Bans</a> | <a href='/admin/log'>Log</a> | <a href='/admin/logout'>Logout</a>" 
               "<a href='/login'>∈)☼(∋</a>")))
 
 (defun board-render-body (text &optional thread-id)
   (let* ((escaped (board-escape-html text))
          (reflink-target (if thread-id 
-                             (format "/thread?id=%s#p\\1" thread-id) 
-                           "#p\\1"))
+                              (format "/thread?id=%s#p\\1" thread-id) 
+                            "#p\\1"))
          (with-reflinks (replace-regexp-in-string "&gt;&gt;\\([0-9]+\\)" 
                                                   (format "<a href='%s' class='reflink'>>>\\1</a>" reflink-target) 
                                                   escaped))
          (lines (split-string with-reflinks "\n")))
     (mapconcat (lambda (line) 
-                 (if (string-prefix-p "&gt;" (string-trim-left line)) 
-                     (format "<span class='greentext'>%s</span>" line) 
-                   line)) 
-               lines "<br>")))
+                  (if (string-prefix-p "&gt;" (string-trim-left line)) 
+                      (format "<span class='greentext'>%s</span>" line) 
+                    line)) 
+                lines "<br>")))
 
 (defun render-post-html (post &optional is-op in-thread-view thread is-admin)
   (let* ((id (plist-get post :id)) 
          (ip (plist-get post :ip)) 
          (tags (plist-get post :tags))
-         
          (thread-id (if is-op id (plist-get (plist-get thread :op) :id)))
          (post-link (if in-thread-view 
                         (format "#p%s" id) 
                       (format "/thread?id=%s#p%s" thread-id id)))
          (backlinks (when (and thread in-thread-view) (board-get-replies-to id thread))))
     (format "<div class='post %s' id='p%s'>
-                <div class='post-meta'>
-                  <span class='subject'>%s</span> 
-                  <span class='name'>%s%s</span> 
-                  <span class='date'>%s</span> 
-                  <span class='num'><a class='post-id-link' href='%s'>No.%s</a></span>
-                  %s %s %s
-                </div>
-                <div class='content'>%s</div>
-                %s
-                %s
-              </div>"
+                 <div class='post-meta'>
+                   <span class='subject'>%s</span> 
+                   <span class='name'>%s%s</span> 
+                   <span class='date'>%s</span> 
+                   <span class='num'><a class='post-id-link' href='%s'>No.%s</a></span>
+                   %s %s %s
+                 </div>
+                 <div class='content'>%s</div>
+                 %s
+                 %s
+               </div>"
             (if is-op "op" "reply") 
             id 
             (board-escape-html (or (plist-get post :subject) ""))
@@ -123,7 +119,6 @@
                            <small class='ip-tag'>(IP: %s)</small>
                          </span>" id id ip ip) "")
 
-            ;; PASSING THREAD-ID HERE
             (board-render-body (or (plist-get post :body) "") thread-id)
 
             (if backlinks 
@@ -148,7 +143,7 @@
               ""))))
 
 (defun render-thread-html (thread &optional full-view is-admin)
-  (let* ((op (plist-get thread :op)) o
+  (let* ((op (plist-get thread :op))
          (replies (plist-get thread :replies)) 
          (count (length replies))
          (shown (if full-view replies (last replies 3))))
@@ -159,8 +154,6 @@
             (render-post-html op t full-view thread is-admin)
             (mapconcat (lambda (r) (render-post-html r nil full-view thread is-admin)) shown "") 
             "</div>")))
-
-;; --- RSS RENDERING ---
 
 (defun render-rss-item (post thread-id)
   (format "<item>
@@ -173,12 +166,10 @@
           site-root 
           thread-id 
           (plist-get post :id) 
-      
           (board-render-rss-body (or (plist-get post :body) "")) 
           (board-format-rss-date (plist-get post :timestamp))))
 
 (defun board-render-rss-body (text)
-  "Convert body text for RSS: handles greentext, blue reflinks, and newlines."
   (let* ((escaped (board-escape-html text))
          (with-reflinks (replace-regexp-in-string 
                          "&gt;&gt;\\([0-9]+\\)" 
@@ -210,22 +201,19 @@
             (mapconcat (lambda (r) (render-rss-item r id)) (plist-get thread :replies) "") 
             "</channel></rss>")))
 
-;; update
-
 (defun render-tag-overview (tags)
   (if (not tags)
       ""
     (format "<div class='tag-overview' style='text-align:center; margin:10px 0; font-family:monospace;'>
-               <span style='color:#888;'>recent tags:</span> 
-               %s
-
-               <br><div style='display:inline-block; margin-left:15px;'>
-                 <form action='/tags' method='GET' style='display:inline;'>
-                   <input type='text' name='name' placeholder='search tags...' 
-                          style='background:#000; color:#ccc; border:1px solid #444; font-size:0.8em; padding:2px 5px; width:100px;'>
-                 </form>
-               </div>
-             </div><hr>"
+                <span style='color:#888;'>recent tags:</span> 
+                %s
+                <br><div style='display:inline-block; margin-left:15px;'>
+                  <form action='/tags' method='GET' style='display:inline;'>
+                    <input type='text' name='name' placeholder='search tags...' 
+                           style='background:#000; color:#ccc; border:1px solid #444; font-size:0.8em; padding:2px 5px; width:100px;'>
+                  </form>
+                </div>
+              </div><hr>"
             (mapconcat (lambda (tag) 
                          (format "<a href='/tags?name=%s' class='tag'>%s</a>" 
                                  (url-hexify-string tag) tag)) 
@@ -239,8 +227,8 @@
       <h2>Board Tag Index</h2>
       <div class='tag-search-box' style='margin-bottom:20px;'>
         <form action='/tags' method='GET'>
-           <input type='text' name='name' placeholder='Search tag...' style='background:#111; color:#fff; border:1px solid #333;'>
-           <input type='submit' value='Filter'>
+            <input type='text' name='name' placeholder='Search tag...' style='background:#111; color:#fff; border:1px solid #333;'>
+            <input type='submit' value='Filter'>
         </form>
       </div>
       <div class='tag-cloud-full'>"
@@ -254,13 +242,12 @@
    (render-footer)))
 
 (defun render-rate-limit-page (ip wait-mins)
-  "Raw HTML to force a render in any browser."
   (concat
    "<html><body style='background-color:black;color:red;font-family:monospace;padding:50px;'>"
    "<h1>[ RATE LIMIT REACHED ]</h1>"
    "<hr>"
    "<p><b>IP:</b> " ip "</p>"
-   "<p><b>RETRY IN:</b> " (number-to-string wait-mins) " minutes.</p>"
+   "<p><b>REASON:</b> Max 5 posts per hour.</p>"
    "<p><a href='/home' style='color:white;'>[ RETURN HOME ]</a></p>"
    "</body></html>"))
 
