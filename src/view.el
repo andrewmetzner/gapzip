@@ -93,4 +93,46 @@
 (defun render-footer ()
   "<div class='footer'>Powered by Emacs Lisp</div></div></body></html>")
 
+(defun render-tag-overview (tags)
+  "Renders the horizontal list of recent tags shown on the homepage."
+  (if (not tags)
+      ""
+    (format "<div class='tag-overview' style='text-align:center; margin:10px 0; font-family:monospace;'>
+                <span style='color:#888;'>recent tags:</span> 
+                %s
+                <br><div style='display:inline-block; margin-left:15px;'>
+                  <form action='/tags' method='GET' style='display:inline;'>
+                    <input type='text' name='name' placeholder='search tags...' 
+                           style='background:#000; color:#ccc; border:1px solid #444; font-size:0.8em; padding:2px 5px; width:100px;'>
+                  </form>
+                </div>
+              </div><hr>"
+            (mapconcat (lambda (tag) 
+                         (format "<a href='/tags?name=%s' class='tag'>%s</a>" 
+                                 (url-hexify-string tag) tag)) 
+                       tags " "))))
+
+(defun render-tag-search-page (all-tags &optional is-admin)
+  "Renders the full /tags index page."
+  (concat
+   (render-header "Tag Index" is-admin)
+   "<div class='container'>
+      <a href='/home'>[Back]</a>
+      <h2>Board Tag Index</h2>
+      <div class='tag-search-box' style='margin-bottom:20px;'>
+        <form action='/tags' method='GET'>
+            <input type='text' name='name' placeholder='Search tag...' style='background:#111; color:#fff; border:1px solid #333;'>
+            <input type='submit' value='Filter'>
+        </form>
+      </div>
+      <div class='tag-cloud-full'>"
+   (if all-tags
+       (mapconcat (lambda (tag) 
+                    (format "<a href='/tags?name=%s' class='tag' style='display:inline-block; margin:5px;'>%s</a>" 
+                            (url-hexify-string tag) tag)) 
+                  all-tags " ")
+     "No tags found.")
+   "</div></div>"
+   (render-footer)))
+
 (provide 'view)
