@@ -28,7 +28,8 @@
 ;;             (error (setq board-threads nil board-post-count 0))))
 ;;       (setq board-threads nil board-post-count 0))))
 
-;; Add :log to the save list
+(defvar board-post-log nil "List of (ip timestamp post-id)")
+
 (defun board-save ()
   (let ((save-path (expand-file-name "data/board-data.el" board-root)))
     (with-temp-file save-path
@@ -38,24 +39,26 @@
                      :bans board-banned-ips
                      :log board-post-log) (current-buffer))))))
 
-;; Add :log to the load list
 (defun board-load ()
   (let ((load-path (expand-file-name "data/board-data.el" board-root)))
-    (when (file-exists-p load-path)
-      (with-temp-buffer
-        (insert-file-contents load-path)
-        (let ((data (read (current-buffer))))
-          (setq board-post-count (or (plist-get data :count) 0))
-          (setq board-threads (plist-get data :threads))
-          (setq board-banned-ips (plist-get data :bans))
-          (setq board-post-log (plist-get data :log)))))))
+    (if (file-exists-p load-path)
+        (with-temp-buffer
+          (insert-file-contents load-path)
+          (let ((data (read (current-buffer))))
+            (setq board-post-count (or (plist-get data :count) 0))
+            (setq board-threads (plist-get data :threads))
+            (setq board-banned-ips (plist-get data :bans))
+            (setq board-post-log (plist-get data :log)))))))
 
 (defun board-check-rate-limit (ip &optional post-id)
+  "Check limit and log the attempt. post-id is optional to prevent argument errors."
   (let* ((now (float-time))
          (one-hour-ago (- now 3600)))
+    ;; Cleanup old entries
     (setq board-post-log (cl-remove-if (lambda (e) (< (nth 1 e) one-hour-ago)) board-post-log))
-    (let ((this-user-posts (cl-remove-if-not (lambda (e) (string= (car e) ip)) board-post-log)))
-      (if (< (length this-user-posts) 5)
+    ;; Count matches for this IP
+    (let ((count (cl-count-if (lambda (e) (string= (car e) ip)) board-post-log)))
+      (if (< count 5)
           (progn (push (list ip now post-id) board-post-log) t)
         nil))))
 

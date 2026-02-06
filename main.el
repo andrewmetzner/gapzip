@@ -346,21 +346,22 @@ x  |          |         |    |       |         |x
       (httpd-error proc 403)
     (with-httpd-buffer proc "text/html"
       (insert (render-header "Traffic Log" t))
-      (insert "<h2>Recent Activity (60m)</h2>")
-      (insert "<table style='width:100%; font-family:monospace; background:#111;'>
-               <tr style='color:#888;'><th>IP</th><th>Post</th><th>Expires</th><th>Action</th></tr>")
+      (insert "<h2>Recent Activity (1hr)</h2>")
+      (insert "<table style='width:100%; font-family:monospace; background:#111; color:#eee;'>
+               <tr><th>IP</th><th>Post ID</th><th>Action</th></tr>")
       (dolist (entry board-post-log)
-        (let* ((ip (car entry))
-               (pid (nth 2 entry))
-               (expires (round (/ (- (+ (nth 1 entry) 3600) (float-time)) 60))))
-          (insert (format "<tr><td>%s</td><td>#%s</td><td>%dm</td><td><a href='/admin/ban?ip=%s'>[BAN]</a></td></tr>" 
-                          ip pid expires ip))))
-      (insert "</table><br><a href='/admin/clear-log'>[Clear All Limits]</a>"))))
+        (insert (format "<tr><td>%s</td><td>#%s</td><td><a href='/admin/ban?ip=%s'>[BAN]</a></td></tr>" 
+                        (car entry) (nth 2 entry) (car entry))))
+      (insert "</table><br><a href='/admin/clear-log'>[Emergency Clear All Limits]</a>"))))
 
 (defun httpd/admin/clear-log (proc path query args)
-  (if (board-is-admin-p proc args)
-      (progn (setq board-post-log nil) (board-save) (httpd-redirect proc "/admin/log"))
-    (httpd-error proc 403)))
+  (when (board-is-admin-p proc args)
+    (setq board-post-log nil)
+    (board-save)
+    (httpd-redirect proc "/admin/log")))
+
+(httpd-def-route "/admin/log" 'httpd/admin/log)
+(httpd-def-route "/admin/clear-log" 'httpd/admin/clear-log)
 
 ;; --- ADMIN ROUTES ---
 
