@@ -89,7 +89,7 @@
          (backlinks (when (and thread in-thread-view) (board-get-replies-to id thread))))
     (format "<div class='post %s' id='p%s'>
                  <div class='post-meta'>
-                   <span class='subject'>%s</span> 
+                   <span class='subject'>%s</span><br>
                    <span class='name'>%s%s</span> 
                    <span class='date'>%s</span> 
                    <span class='num'><a class='post-id-link' href='%s'>No.%s</a></span>
