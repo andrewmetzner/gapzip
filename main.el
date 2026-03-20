@@ -102,12 +102,14 @@ x  |          |         |    |       |         |x
       (httpd-error proc 404))))
 
 ;; --- ROUTES ---
+
 (defun httpd/home (proc path query args)
   (let* ((admin (board-is-admin-p proc args))
          (remembered-name (board-get-cookie-name args))
          (error-msg (cadr (assoc "error" query)))
          (threads-per-page 10)
          (total-threads (length board-threads))
+
          (recent-tags (let ((all-tags nil))
                         (dolist (tt board-threads)
                           (setq all-tags (append (plist-get (plist-get tt :op) :tags) all-tags)))
@@ -123,15 +125,17 @@ x  |          |         |    |       |         |x
       (with-httpd-buffer proc "text/html"
         (insert (render-header "goatse.world" admin "/rss"))
         (insert-board-ascii)
+        
+        (when (string= error-msg "ratelimit")
+          (insert (render-rate-limit-box (board-get-ip proc args))))
+
         (insert (render-tag-overview recent-tags))
 
-	(when (string= error-msg "ratelimit")
-	  (insert (render-rate-limit-box)))
-
-        (insert (format "<h3></h3><form method='POST' action='/post-entry'>
+        (insert (format "<h3>New Thread</h3>
+                        <form method='POST' action='/post-entry'>
                           <input name='name' placeholder='Name#Trip' value='%s'>
                           <input name='subject' placeholder='Subject'><br>
-                          <input name='tags' placeholder='Tags' style='width:345px;margin-top:5px;'><br>
+                          <input name='tags' placeholder='Tags (comma separated)' style='width:345px;margin-top:5px;'><br>
                           <textarea name='comment' rows='4' style='width:345px;margin-top:5px;'></textarea><br>
                           <input type='submit' value='Create New Thread'>
                         </form><hr>" (board-escape-html remembered-name)))
@@ -153,24 +157,103 @@ x  |          |         |    |       |         |x
 (defun httpd/thread (proc path query args)
   (let* ((id-param (cadr (assoc "id" query)))
          (id (if id-param (string-to-number id-param) 0))
-         (error-msg (cadr (assoc "error" query))) ;; Add this line
+         (error-msg (cadr (assoc "error" query)))
          (admin (board-is-admin-p proc args)) 
          (remembered-name (board-get-cookie-name args))
          (tt (cl-find-if (lambda (x) (= (plist-get (plist-get x :op) :id) id)) board-threads))
          (op-subject (when tt (plist-get (plist-get tt :op) :subject)))
          (page-title (if (and op-subject (not (string-empty-p (string-trim op-subject))))
                          op-subject
-                       "no subject")))
+                       (format "Thread #%d" id))))
     (with-httpd-buffer proc "text/html" 
       (insert (render-header page-title admin (format "/thread/rss?id=%d" id)))
       (insert-board-ascii)
 
       (when (string= error-msg "ratelimit")
-	(insert (render-rate-limit-box)))
+        (insert (render-rate-limit-box (board-get-ip proc args))))
       
-      (insert (format "<div><a href='/home'>[Back]</a></div><hr><form method='POST' action='/post-entry'><input type='hidden' name='resto' value='%d'><input name='name' placeholder='Name#Trip' value='%s' style='margin-bottom:5px;'><br><textarea name='comment' rows='4' style='width:345px;'></textarea><br><input type='submit' value='Reply'></form><hr>" id (board-escape-html remembered-name)))
-      (if tt (insert (render-thread-html tt t admin)) (insert "Not found")) 
+      (insert (format "<div><a href='/home'>[Back]</a></div><hr>
+                      <form method='POST' action='/post-entry'>
+                        <input type='hidden' name='resto' value='%d'>
+                        <input name='name' placeholder='Name#Trip' value='%s' style='margin-bottom:5px;'><br>
+                        <textarea name='comment' rows='4' style='width:345px;'></textarea><br>
+                        <input type='submit' value='Reply'>
+                      </form><hr>" id (board-escape-html remembered-name)))
+      
+      (if tt 
+          (insert (render-thread-html tt t admin)) 
+        (insert "<p class='greentext'>Thread not found.</p>")) 
       (insert (render-footer)))))
+
+;; (defun httpd/home (proc path query args)
+;;   (let* ((admin (board-is-admin-p proc args))
+;;          (remembered-name (board-get-cookie-name args))
+;;          (error-msg (cadr (assoc "error" query)))
+;;          (threads-per-page 10)
+;;          (total-threads (length board-threads))
+;;          (recent-tags (let ((all-tags nil))
+;;                         (dolist (tt board-threads)
+;;                           (setq all-tags (append (plist-get (plist-get tt :op) :tags) all-tags)))
+;;                         (seq-take (delete-dups (reverse all-tags)) 10)))
+;;          (total-pages (ceiling (/ (float total-threads) threads-per-page)))
+;;          (max-pages (min total-pages 10))
+;;          (page-param (cadr (assoc "page" query)))
+;;          (page (if page-param (string-to-number page-param) 1)))
+;;     (setq page (max 1 (min page max-pages)))
+;;     (let* ((start (* (- page 1) threads-per-page))
+;;            (end (min total-threads (+ start threads-per-page)))
+;;            (page-threads (if (<= page max-pages) (cl-subseq board-threads start end) nil)))
+;;       (with-httpd-buffer proc "text/html"
+;;         (insert (render-header "goatse.world" admin "/rss"))
+;;         (insert-board-ascii)
+;;         (insert (render-tag-overview recent-tags))
+
+;; 	(when (string= error-msg "ratelimit")
+;; 	  (insert (render-rate-limit-box)))
+
+;;         (insert (format "<h3></h3><form method='POST' action='/post-entry'>
+;;                           <input name='name' placeholder='Name#Trip' value='%s'>
+;;                           <input name='subject' placeholder='Subject'><br>
+;;                           <input name='tags' placeholder='Tags' style='width:345px;margin-top:5px;'><br>
+;;                           <textarea name='comment' rows='4' style='width:345px;margin-top:5px;'></textarea><br>
+;;                           <input type='submit' value='Create New Thread'>
+;;                         </form><hr>" (board-escape-html remembered-name)))
+
+;;         (if page-threads
+;;             (dolist (tt page-threads) (insert (render-thread-html tt nil admin)))
+;;           (insert "<div><a href='/home'>[Back]</a></div><hr>Not found"))
+
+;;         (when (> max-pages 1)
+;;           (insert "<div class='pagination'>Pages: ")
+;;           (dotimes (i max-pages)
+;;             (let ((p (1+ i)))
+;;               (insert (if (= p page)
+;;                           (format "<b>[%d]</b> " p)
+;;                         (format "<a href='/home?page=%d'>[%d]</a> " p p)))))
+;;           (insert "</div>"))
+;;         (insert (render-footer))))))
+
+;; (defun httpd/thread (proc path query args)
+;;   (let* ((id-param (cadr (assoc "id" query)))
+;;          (id (if id-param (string-to-number id-param) 0))
+;;          (error-msg (cadr (assoc "error" query))) ;; Add this line
+;;          (admin (board-is-admin-p proc args)) 
+;;          (remembered-name (board-get-cookie-name args))
+;;          (tt (cl-find-if (lambda (x) (= (plist-get (plist-get x :op) :id) id)) board-threads))
+;;          (op-subject (when tt (plist-get (plist-get tt :op) :subject)))
+;;          (page-title (if (and op-subject (not (string-empty-p (string-trim op-subject))))
+;;                          op-subject
+;;                        "no subject")))
+;;     (with-httpd-buffer proc "text/html" 
+;;       (insert (render-header page-title admin (format "/thread/rss?id=%d" id)))
+;;       (insert-board-ascii)
+
+;;       (when (string= error-msg "ratelimit")
+;; 	(insert (render-rate-limit-box)))
+      
+;;       (insert (format "<div><a href='/home'>[Back]</a></div><hr><form method='POST' action='/post-entry'><input type='hidden' name='resto' value='%d'><input name='name' placeholder='Name#Trip' value='%s' style='margin-bottom:5px;'><br><textarea name='comment' rows='4' style='width:345px;'></textarea><br><input type='submit' value='Reply'></form><hr>" id (board-escape-html remembered-name)))
+;;       (if tt (insert (render-thread-html tt t admin)) (insert "Not found")) 
+;;       (insert (render-footer)))))
 
 ;; --- TAGS & TAG RSS ---
 (defun httpd/tags (proc path query args)
@@ -272,6 +355,9 @@ x  |          |         |    |       |         |x
 (defun httpd/admin/edit (proc path query args) (board-admin-edit-route proc path query args))
 (defun httpd/admin/update (proc path query args) (board-admin-update-route proc path query args))
 
+(defun httpd/tags (proc path query args)
+  (board-tags-route proc path query args))
+
 (defun httpd/login (proc path query args) 
   (with-httpd-buffer proc "text/html" (insert-board-ascii) (insert "<h2>Admin</h2><form method='POST' action='/admin/auth'><input type='password' name='pwd'><input type='submit'></form>")))
 
@@ -282,12 +368,39 @@ x  |          |         |    |       |         |x
       (httpd-error proc 403))))
 
 ;; --- POSTING LOGIC ---
+;; (defun httpd/post-entry (proc path query args)
+;;   (let* ((ip (board-get-ip proc args))
+;;          (admin (board-is-admin-p proc args)))
+;;     (if (or admin (board-check-rate-limit ip (1+ board-post-count)))
+;;         (board-handle-post proc args)
+;;     (httpd/home proc "/home" '(("error" "ratelimit")) args))))
+
+;; (defun httpd/post-entry (proc path query args)
+;;   (let* ((ip (board-get-ip proc args))
+;;          (admin (board-is-admin-p proc args))
+;;          (resto (board-get-arg args "resto"))
+;;          (redirect-url (if (and resto (not (string-empty-p resto)))
+;;                            (format "/thread?id=%s&error=ratelimit" resto)
+;;                          "/home?error=ratelimit")))
+;;     (if (or admin (board-check-rate-limit ip (1+ board-post-count)))
+;;         (board-handle-post proc args)
+;;       (progn
+;;         (httpd-send-header proc "text/html" 302 :Location redirect-url)
+;;         (process-send-string proc "")))))
+
 (defun httpd/post-entry (proc path query args)
   (let* ((ip (board-get-ip proc args))
-         (admin (board-is-admin-p proc args)))
+         (admin (board-is-admin-p proc args))
+         (resto (board-get-arg args "resto")) 
+         (fail-url (if (and resto (not (string-empty-p resto)))
+                       (format "/thread?id=%s&error=ratelimit" resto)
+                     "/home?error=ratelimit")))
+    
     (if (or admin (board-check-rate-limit ip (1+ board-post-count)))
         (board-handle-post proc args)
-    (httpd/home proc "/home" '(("error" "ratelimit")) args))))
+       (progn
+        (httpd-send-header proc "text/html" 302 :Location fail-url)
+        (process-send-string proc "")))))
 
 (defun httpd/ (proc path query args) (httpd-redirect proc "/home"))
 

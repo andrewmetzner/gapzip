@@ -202,4 +202,41 @@
                                                  (url-hexify-string name-raw)))
           (process-send-string proc "")))))))
 
+(defun board-tags-route (proc path query args)
+  (let* ((tag-raw (cadr (assoc "name" query)))
+         (tag-name (if tag-raw (url-unhex-string tag-raw) ""))
+         (is-admin (board-is-admin-p proc args)))
+    (with-httpd-buffer proc "text/html"
+      (insert (render-header (if (string-empty-p tag-name) "all tags" (format "Tag: %s" tag-name)) is-admin))
+      
+      (insert-board-ascii)
+      
+      (if (string-empty-p tag-name)
+          (let ((all-tags (get-all-board-tags board-threads)))
+            (insert "<div><a href='/home' class='nav-link'>[Back]</a></div><hr>")
+            (insert (render-tag-index-page all-tags is-admin)))
+        
+        (let ((filtered (cl-remove-if-not 
+                         (lambda (tt) (member (downcase tag-name) (plist-get (plist-get tt :op) :tags)))
+                         board-threads)))
+          (insert "<div><a href='/' class='nav-link'>[Back]</a></div><hr>")
+          (insert (format "<h2>tag: %s</h2>" tag-name))
+          
+          (when is-admin
+            (insert (format "
+              <div class='admin-rename-box' style='background:#1a1a1a; padding:10px; border:1px solid #444; margin-bottom:20px;'>
+                <form method='POST' action='/admin/rename-tag-global'>
+                  <input type='hidden' name='old' value='%s'>
+                  <b>Admin:</b> Rename this tag globally: 
+                  <input name='new' placeholder='new name' style='background:#000; color:#fff; border:1px solid #333;'>
+                  <input type='submit' value='Apply'>
+                </form>
+              </div>" tag-name)))
+
+          (if filtered
+              (dolist (tt filtered) (insert (render-thread-html tt nil is-admin)))
+            (insert "<p class='greentext'>No posts found with this tag.</p>"))))
+      
+      (insert (render-footer)))))
+
 (provide 'controller)

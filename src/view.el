@@ -201,48 +201,135 @@
             (mapconcat (lambda (r) (render-rss-item r id)) (plist-get thread :replies) "") 
             "</channel></rss>")))
 
+;; (defun render-tag-overview (tags)
+;;   (if (not tags)
+;;       ""
+;;     (format "<div class='tag-overview' style='text-align:center; margin:10px 0; font-family:monospace;'>
+;;                 <span style='color:#888;'>recent tags:</span> 
+;;                 %s
+;;                 <br><div style='display:inline-block; margin-left:15px;'>
+;;                   <form action='/tags' method='GET' style='display:inline;'>
+;;                     <input type='text' name='name' placeholder='search tags...' 
+;;                            style='background:#000; color:#ccc; border:1px solid #444; font-size:0.8em; padding:2px 5px; width:100px;'>
+;;                   </form>
+;;                 </div>
+;;               </div><hr>"
+;;             (mapconcat (lambda (tag) 
+;;                          (format "<a href='/tags?name=%s' class='tag'>%s</a>" 
+;;                                  (url-hexify-string tag) tag)) 
+;;                        tags " "))))
+
+;; (defun render-tag-search-page (all-tags &optional is-admin)
+;;   (concat
+;;    (render-header "Tag Index" is-admin)
+;;    "<div class='container'>
+;;       <a href='/home'>[Back]</a>
+;;       <h2>Board Tag Index</h2>
+;;       <div class='tag-search-box' style='margin-bottom:20px;'>
+;;         <form action='/tags' method='GET'>
+;;             <input type='text' name='name' placeholder='Search tag...' style='background:#111; color:#fff; border:1px solid #333;'>
+;;             <input type='submit' value='Filter'>
+;;         </form>
+;;       </div>
+;;       <div class='tag-cloud-full'>"
+;;    (if all-tags
+;;        (mapconcat (lambda (tag) 
+;;                     (format "<a href='/tags?name=%s' class='tag' style='display:inline-block; margin:5px;'>%s</a>" 
+;;                             (url-hexify-string tag) tag)) 
+;;                   all-tags " ")
+;;      "No tags found.")
+;;    "</div></div>"
+;;    (render-footer)))
+
 (defun render-tag-overview (tags)
+  "Show a few recent tags and a link to the full directory."
   (if (not tags)
       ""
     (format "<div class='tag-overview' style='text-align:center; margin:10px 0; font-family:monospace;'>
-                <span style='color:#888;'>recent tags:</span> 
-                %s
-                <br><div style='display:inline-block; margin-left:15px;'>
-                  <form action='/tags' method='GET' style='display:inline;'>
-                    <input type='text' name='name' placeholder='search tags...' 
-                           style='background:#000; color:#ccc; border:1px solid #444; font-size:0.8em; padding:2px 5px; width:100px;'>
-                  </form>
-                </div>
+                <span style='color:#888;'>recent:</span> 
+                %s 
+                <a href='/tags' class='nav-link' style='margin-left:15px;'>[view all tags]</a>
               </div><hr>"
             (mapconcat (lambda (tag) 
                          (format "<a href='/tags?name=%s' class='tag'>%s</a>" 
                                  (url-hexify-string tag) tag)) 
                        tags " "))))
 
-(defun render-tag-search-page (all-tags &optional is-admin)
+(defun render-tag-index-page (all-tags &optional is-admin)
+  "Renders the grid of tags for the /tags page."
   (concat
-   (render-header "Tag Index" is-admin)
-   "<div class='container'>
-      <a href='/home'>[Back]</a>
-      <h2>Board Tag Index</h2>
-      <div class='tag-search-box' style='margin-bottom:20px;'>
-        <form action='/tags' method='GET'>
-            <input type='text' name='name' placeholder='Search tag...' style='background:#111; color:#fff; border:1px solid #333;'>
-            <input type='submit' value='Filter'>
-        </form>
-      </div>
-      <div class='tag-cloud-full'>"
+   "<div class='thread-container' style='padding:20px;'>
+      <h2 style='margin-top:0;'>all tags</h2>
+      <div class='tag-cloud-full' style='display: flex; flex-wrap: wrap; gap: 10px;'>"
    (if all-tags
        (mapconcat (lambda (tag) 
-                    (format "<a href='/tags?name=%s' class='tag' style='display:inline-block; margin:5px;'>%s</a>" 
+                    (format "<a href='/tags?name=%s' class='tag' style='font-size: 1.1em;'>%s</a>" 
                             (url-hexify-string tag) tag)) 
-                  all-tags " ")
-     "No tags found.")
-   "</div></div>"
-   (render-footer)))
+                  (sort all-tags 'string-lessp) "")
+     "<p class='greentext'>no tags.</p>")
+   "</div></div>"))
+
+;; (defun render-tag-search-page (all-tags &optional is-admin)
+;;   (concat
+;;    (render-header "Tags" is-admin)
+;;    (format "
+;;    <div class='container'>
+;;      <a href='/home' class='nav-link'>[Back]</a>
+;;    </div>
+;;    <div class='thread-container' style='padding: 20px; background: rgba(0,0,0,0.2); border: 1px solid #333;'>
+;;       <h2 style='margin-top:0;'>Board Tag Index</h2>
+;;       <div class='tag-cloud-full' style='display: flex; flex-wrap: wrap; gap: 10px;'>
+;;         %s
+;;       </div>
+;;    </div>"
+;;    (if all-tags
+;;        (mapconcat (lambda (tag) 
+;;                     (format "<a href='/tags?name=%s' class='tag' style='font-size: 1.1em;'>%s</a>" 
+;;                             (url-hexify-string tag) tag)) 
+;;                   all-tags "")
+;;      "<p class='greentext'>No tags found on this board.</p>"))
+;;    (render-footer)))
+
+(defun render-tag-search-page-content (all-tags &optional is-admin)
+  (concat
+   "<div class='container'>
+      <a href='/home' class='nav-link'>[Back]</a>
+    </div>
+    <div class='thread-container' style='padding: 20px; border: 1px solid #333; background: rgba(0,0,0,0.2);'>
+      <h2 style='margin-top:0;'>all tags</h2>
+      <div class='tag-cloud-full' style='display: flex; flex-wrap: wrap; gap: 10px;'> "
+   (if all-tags
+       (mapconcat (lambda (tag) 
+                    (format "<a href='/tags?name=%s' class='tag' style='font-size: 1.1em;'>%s</a>" 
+                            (url-hexify-string tag) tag)) 
+                  all-tags "")
+     "<p class='greentext'>WHAT?? NO TAGS!.</p>")
+   "</div></div>"))
+
+;; (defun render-rate-limit-box (&optional ip wait-time)
+;;   "Returns a standalone HTML string. &optional prevents wrong-number-of-arguments errors."
+;;   (format 
+;;    "<div class='rate-limit-error' style='color: #ff4444; border: 1px solid #ff4444; 
+;;                 padding: 10px; margin: 10px auto; width: 345px; text-align: center; 
+;;                 font-family: monospace; background: #1a0000; box-shadow: 0 0 10px rgba(255,0,0,0.5);'>
+;;      <b style='font-size: 1.2em;'>[!] RATE LIMIT REACHED</b><br>
+;;      <span style='font-size: 0.85em; color: #ccc;'>
+;;        IP: %s<br>
+;;        Max 5 posts per hour.
+;;      </span>
+;;    </div>" 
+;;    (or ip "Unknown") 
+;;    (or wait-time "60")))
+
+;; (defun render-rate-limit-page (&rest _args)
+;;   "Fallback to prevent 500 errors if called as a full page."
+;;   (concat
+;;    (render-header "Rate Limited")
+;;    (render-rate-limit-box)
+;;    (render-footer)))
 
 (defun render-rate-limit-box (&optional ip wait-time)
-  "Returns a standalone HTML string. &optional prevents wrong-number-of-arguments errors."
+  "Returns a standalone HTML error box for injection into pages."
   (format 
    "<div class='rate-limit-error' style='color: #ff4444; border: 1px solid #ff4444; 
                 padding: 10px; margin: 10px auto; width: 345px; text-align: center; 
@@ -250,19 +337,11 @@
      <b style='font-size: 1.2em;'>[!] RATE LIMIT REACHED</b><br>
      <span style='font-size: 0.85em; color: #ccc;'>
        IP: %s<br>
-       Max 5 posts per hour.
+       YOU ARE LIMITED!
      </span>
    </div>" 
    (or ip "Unknown") 
    (or wait-time "60")))
-
-(defun render-rate-limit-page (&rest _args)
-  "Fallback to prevent 500 errors if called as a full page."
-  (concat
-   (render-header "Rate Limited")
-   (render-rate-limit-box)
-   (render-footer)))
-
 
 
 
