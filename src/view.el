@@ -251,9 +251,8 @@
   (if (not tags)
       ""
     (format "<div class='tag-overview' style='text-align:center; margin:10px 0; font-family:monospace;'>
-                <span style='color:#888;'>recent:</span> 
-                %s 
-                <a href='/tags' class='nav-link' style='margin-left:15px;'>[view all tags]</a>
+                <span style='color:#888;'>recent:</span> %s
+                <br><a href='/tags' class='nav-link' style='font-size:0.85em;'>[view all tags]</a>
               </div><hr>"
             (mapconcat (lambda (tag) 
                          (format "<a href='/tags/%s' class='tag'>%s</a>" 
