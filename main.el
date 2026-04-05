@@ -33,36 +33,36 @@
     (cl-subseq items start end)))
 
 ;; --- ASCII ART HELPER ---
+(defvar board-ascii-art "
+* g o a t s e x * g o a t s e x * g o a t s e x *
+g                                               g
+o /     \\             \\            /    \\       o
+a|       |             \\          |      |      a
+t|       `.             |         |       :     t
+s`        |             |        \\|       |     s
+e \\       | /       /  \\\\\\   --__ \\\\       :    e
+x  \\      \\/   _--~~          ~--__| \\     |    x
+*   \\      \\_-~                    ~-_\\    |    *
+g    \\_     \\        _.--------.______\\|   |    g
+o      \\     \\______// _ ___ _ (_(__>  \\   |    o
+a       \\   .  C ___)  ______ (_(____>  |  /    a
+t       /\\ |   C ____)/      \\ (_____>  |_/     t
+s      / /\\|   C_____)       |  (___>   /  \\    s
+e     |   (   _C_____)\\______/  // _/ /     \\   e
+x     |    \\  |__   \\\\_________// (__/       |  x
+*    | \\    \\____)   `----   --'             |  *
+g    |  \\_          ___\\       /_          _/ | g
+o   |              /    |     |  \\            | o
+a   |             |    /       \\  \\           | a
+t   |          / /    |         |  \\           |t
+s   |         / /      \\__/\\___/    |          |s
+e  |         / /        |    |       |         |e
+x  |          |         |    |       |         |x
+* g o a t s e x * g o a t s e x * g o a t s e x *
+")
+
 (defun insert-board-ascii ()
   (insert (format "<pre class='board-ascii'>%s</pre>" board-ascii-art)))
-
-(defvar board-ascii-art "
-* g o a t s e x * g o a t s e x * g o a t s e x * 
-g                                               g  
-o /     \\             \\            /    \\       o  
-a|       |             \\          |      |      a  
-t|       `.             |         |       :     t  
-s`        |             |        \\|       |     s  
-e \\       | /       /  \\\\\\   --__ \\\\       :    e  
-x  \\      \\/   _--~~          ~--__| \\     |    x  
-*   \\      \\_-~                    ~-_\\    |    *  
-g    \\_     \\        _.--------.______\\|   |    g  
-o      \\     \\______// _ ___ _ (_(__>  \\   |    o  
-a       \\   .  C ___)  ______ (_(____>  |  /    a  
-t       /\\ |   C ____)/      \\ (_____>  |_/     t  
-s      / /\\|   C_____)       |  (___>   /  \\    s  
-e     |   (   _C_____)\\______/  // _/ /     \\   e  
-x     |    \\  |__   \\\\_________// (__/       |  x  
-*    | \\    \\____)   `----   --'             |  *  
-g    |  \\_          ___\\       /_          _/ | g  
-o   |              /    |     |  \\            | o  
-a   |             |    /       \\  \\           | a  
-t   |          / /    |         |  \\           |t  
-s   |         / /      \\__/\\___/    |          |s  
-e  |         / /        |    |       |         |e  
-x  |          |         |    |       |         |x  
-* g o a t s e x * g o a t s e x * g o a t s e x * 
-")
 
 ;; --- HELPERS ---
 (defun board-get-arg (args key)
@@ -78,7 +78,7 @@ x  |          |         |    |       |         |x
         (setq result (replace-regexp-in-string "%0D%0A" "\n" result))
         (setq result (replace-regexp-in-string "%0A" "\n" result))
         (setq result (replace-regexp-in-string "%0D" "\n" result))
-        (setq result (url-unhex-string result))
+        (setq result (decode-coding-string (url-unhex-string result) 'utf-8))
         result))))
 
 (defun board-get-cookie-name (args)
@@ -119,9 +119,11 @@ x  |          |         |    |       |         |x
          (page-param (cadr (assoc "page" query)))
          (page (if page-param (string-to-number page-param) 1)))
     (setq page (max 1 (min page max-pages)))
-    (let* ((start (* (- page 1) threads-per-page))
+    (let* ((sorted-threads (append (cl-remove-if-not (lambda (tt) (plist-get tt :sticky)) board-threads)
+                                   (cl-remove-if (lambda (tt) (plist-get tt :sticky)) board-threads)))
+           (start (* (- page 1) threads-per-page))
            (end (min total-threads (+ start threads-per-page)))
-           (page-threads (if (<= page max-pages) (cl-subseq board-threads start end) nil)))
+           (page-threads (if (<= page max-pages) (cl-subseq sorted-threads start end) nil)))
       (with-httpd-buffer proc "text/html"
         (insert (render-header "goatse.world" admin "/rss"))
         (insert-board-ascii)
@@ -154,159 +156,63 @@ x  |          |         |    |       |         |x
           (insert "</div>"))
         (insert (render-footer))))))
 
+;; /thread?id=X kept for backward compat - redirects to /threads/X
 (defun httpd/thread (proc path query args)
-  (let* ((id-param (cadr (assoc "id" query)))
-         (id (if id-param (string-to-number id-param) 0))
+  (let ((id-param (cadr (assoc "id" query))))
+    (httpd-redirect proc (if id-param (format "/threads/%s" id-param) "/home"))))
+
+(defun httpd/threads (proc path query args)
+  (let* ((path-parts (cl-remove-if #'string-empty-p (split-string path "/")))
+         (id-str (nth 1 path-parts))
+         (id (string-to-number (or id-str "0")))
          (error-msg (cadr (assoc "error" query)))
-         (admin (board-is-admin-p proc args)) 
+         (admin (board-is-admin-p proc args))
          (remembered-name (board-get-cookie-name args))
          (tt (cl-find-if (lambda (x) (= (plist-get (plist-get x :op) :id) id)) board-threads))
+         (is-locked (and tt (plist-get tt :locked)))
          (op-subject (when tt (plist-get (plist-get tt :op) :subject)))
          (page-title (if (and op-subject (not (string-empty-p (string-trim op-subject))))
                          op-subject
                        (format "Thread #%d" id))))
-    (with-httpd-buffer proc "text/html" 
-      (insert (render-header page-title admin (format "/thread/rss?id=%d" id)))
+    (with-httpd-buffer proc "text/html"
+      (insert (render-header page-title admin (format "/threads/rss?id=%d" id)))
       (insert-board-ascii)
 
       (when (string= error-msg "ratelimit")
         (insert (render-rate-limit-box (board-get-ip proc args))))
-      
-      (insert (format "<div><a href='/home'>[Back]</a></div><hr>
-                      <form method='POST' action='/post-entry'>
-                        <input type='hidden' name='resto' value='%d'>
-                        <input name='name' placeholder='Name#Trip' value='%s' style='margin-bottom:5px;'><br>
-                        <textarea name='comment' rows='4' style='width:345px;'></textarea><br>
-                        <input type='submit' value='Reply'>
-                      </form><hr>" id (board-escape-html remembered-name)))
-      
-      (if tt 
-          (insert (render-thread-html tt t admin)) 
-        (insert "<p class='greentext'>Thread not found.</p>")) 
+
+      (when (string= error-msg "locked")
+        (insert "<div style='color:#f44; border:1px solid #f44; padding:8px; margin:8px auto;
+                              width:345px; text-align:center; font-family:monospace; background:#1a0000;'>
+                   <b>[!] THREAD IS LOCKED</b>
+                 </div>"))
+
+      (insert (format "<div><a href='/home'>[Back]</a></div><hr>" ))
+
+      (if is-locked
+          (insert "<div style='color:#888; font-family:monospace; margin:8px 0;'>[Thread locked — no new replies]</div><hr>")
+        (insert (format "<form method='POST' action='/post-entry'>
+                           <input type='hidden' name='resto' value='%d'>
+                           <input name='name' placeholder='Name#Trip' value='%s' style='margin-bottom:5px;'><br>
+                           <textarea name='comment' rows='4' style='width:345px;'></textarea><br>
+                           <label style='font-size:0.85em; color:#888;'>
+                             <input type='checkbox' name='sage' value='1'> sage (no bump)
+                           </label><br>
+                           <input type='submit' value='Reply'>
+                         </form><hr>"
+                        id (board-escape-html remembered-name))))
+
+      (if tt
+          (insert (render-thread-html tt t admin))
+        (insert "<p class='greentext'>Thread not found.</p>"))
       (insert (render-footer)))))
 
-;; (defun httpd/home (proc path query args)
-;;   (let* ((admin (board-is-admin-p proc args))
-;;          (remembered-name (board-get-cookie-name args))
-;;          (error-msg (cadr (assoc "error" query)))
-;;          (threads-per-page 10)
-;;          (total-threads (length board-threads))
-;;          (recent-tags (let ((all-tags nil))
-;;                         (dolist (tt board-threads)
-;;                           (setq all-tags (append (plist-get (plist-get tt :op) :tags) all-tags)))
-;;                         (seq-take (delete-dups (reverse all-tags)) 10)))
-;;          (total-pages (ceiling (/ (float total-threads) threads-per-page)))
-;;          (max-pages (min total-pages 10))
-;;          (page-param (cadr (assoc "page" query)))
-;;          (page (if page-param (string-to-number page-param) 1)))
-;;     (setq page (max 1 (min page max-pages)))
-;;     (let* ((start (* (- page 1) threads-per-page))
-;;            (end (min total-threads (+ start threads-per-page)))
-;;            (page-threads (if (<= page max-pages) (cl-subseq board-threads start end) nil)))
-;;       (with-httpd-buffer proc "text/html"
-;;         (insert (render-header "goatse.world" admin "/rss"))
-;;         (insert-board-ascii)
-;;         (insert (render-tag-overview recent-tags))
-
-;; 	(when (string= error-msg "ratelimit")
-;; 	  (insert (render-rate-limit-box)))
-
-;;         (insert (format "<h3></h3><form method='POST' action='/post-entry'>
-;;                           <input name='name' placeholder='Name#Trip' value='%s'>
-;;                           <input name='subject' placeholder='Subject'><br>
-;;                           <input name='tags' placeholder='Tags' style='width:345px;margin-top:5px;'><br>
-;;                           <textarea name='comment' rows='4' style='width:345px;margin-top:5px;'></textarea><br>
-;;                           <input type='submit' value='Create New Thread'>
-;;                         </form><hr>" (board-escape-html remembered-name)))
-
-;;         (if page-threads
-;;             (dolist (tt page-threads) (insert (render-thread-html tt nil admin)))
-;;           (insert "<div><a href='/home'>[Back]</a></div><hr>Not found"))
-
-;;         (when (> max-pages 1)
-;;           (insert "<div class='pagination'>Pages: ")
-;;           (dotimes (i max-pages)
-;;             (let ((p (1+ i)))
-;;               (insert (if (= p page)
-;;                           (format "<b>[%d]</b> " p)
-;;                         (format "<a href='/home?page=%d'>[%d]</a> " p p)))))
-;;           (insert "</div>"))
-;;         (insert (render-footer))))))
-
-;; (defun httpd/thread (proc path query args)
-;;   (let* ((id-param (cadr (assoc "id" query)))
-;;          (id (if id-param (string-to-number id-param) 0))
-;;          (error-msg (cadr (assoc "error" query))) ;; Add this line
-;;          (admin (board-is-admin-p proc args)) 
-;;          (remembered-name (board-get-cookie-name args))
-;;          (tt (cl-find-if (lambda (x) (= (plist-get (plist-get x :op) :id) id)) board-threads))
-;;          (op-subject (when tt (plist-get (plist-get tt :op) :subject)))
-;;          (page-title (if (and op-subject (not (string-empty-p (string-trim op-subject))))
-;;                          op-subject
-;;                        "no subject")))
-;;     (with-httpd-buffer proc "text/html" 
-;;       (insert (render-header page-title admin (format "/thread/rss?id=%d" id)))
-;;       (insert-board-ascii)
-
-;;       (when (string= error-msg "ratelimit")
-;; 	(insert (render-rate-limit-box)))
-      
-;;       (insert (format "<div><a href='/home'>[Back]</a></div><hr><form method='POST' action='/post-entry'><input type='hidden' name='resto' value='%d'><input name='name' placeholder='Name#Trip' value='%s' style='margin-bottom:5px;'><br><textarea name='comment' rows='4' style='width:345px;'></textarea><br><input type='submit' value='Reply'></form><hr>" id (board-escape-html remembered-name)))
-;;       (if tt (insert (render-thread-html tt t admin)) (insert "Not found")) 
-;;       (insert (render-footer)))))
-
 ;; --- TAGS & TAG RSS ---
-(defun httpd/tags (proc path query args)
-  (let* ((tag-raw (cadr (assoc "name" query)))
-         (tag-name (if tag-raw (url-unhex-string tag-raw) ""))
-         (admin (board-is-admin-p proc args))
-         (threads-per-page 10)
-         (filtered (cl-remove-if-not
-                    (lambda (tt) (member (downcase tag-name) (plist-get (plist-get tt :op) :tags)))
-                    board-threads))
-         (total-threads (length filtered))
-         (total-pages (ceiling (/ (float total-threads) threads-per-page)))
-         (max-pages (min total-pages 10))
-         (page-param (cadr (assoc "page" query)))
-         (page (if page-param (string-to-number page-param) 1)))
-    (setq page (max 1 (min page max-pages)))
-    (let* ((start (* (- page 1) threads-per-page))
-           (end (min total-threads (+ start threads-per-page)))
-           (page-threads (if (<= page max-pages) (cl-subseq filtered start end) nil)))
-      (with-httpd-buffer proc "text/html"
-        (insert (render-header (format "Tag: %s" tag-name) admin (format "/tags/rss?name=%s" (url-hexify-string tag-name))))
-        (insert-board-ascii)
-        (insert "<a href='/home'>[Back]</a><hr>")
-        (insert (format "<h2>Tag: %s</h2>" tag-name))
-        (when admin
-          (insert (format "
-            <div class='admin-rename-box' style='background:#1a1a1a; padding:10px; border:1px solid red; margin-bottom:20px;'>
-              <form method='POST' action='/admin/rename-tag-global'>
-                <input type='hidden' name='old' value='%s'>
-                Admin: Rename this tag globally to: 
-                <input name='new' placeholder='new tag name' style='background:#000; color:#fff; border:1px solid #444;'>
-                <input type='submit' value='Apply to All Threads'>
-              </form>
-            </div>" tag-name)))
-        (if page-threads
-            (dolist (tt page-threads) (insert (render-thread-html tt nil admin)))
-          (insert "<hr>Not found"))
-        (when (> max-pages 1)
-          (insert "<div class='pagination'>Pages: ")
-          (dotimes (i max-pages)
-            (let ((p (1+ i)))
-              (insert (if (= p page)
-                          (format "<b>[%d]</b> " p)
-                        (format "<a href='/tags?name=%s&page=%d'>[%d]</a> "
-                                (url-hexify-string tag-name) p p)))))
-          (insert "</div>"))
-        (insert (render-footer))))))
-
 (defun httpd/tags/rss (proc path query args)
   (let* ((tag-raw (cadr (assoc "name" query)))
-         (tag (if tag-raw (downcase (url-unhex-string tag-raw)) ""))
-         (filtered (cl-remove-if-not 
-                    (lambda (tt) (member tag (plist-get (plist-get tt :op) :tags))) 
+         (tag (if tag-raw (downcase (decode-coding-string (url-unhex-string tag-raw) 'utf-8)) ""))
+         (filtered (cl-remove-if-not
+                    (lambda (tt) (member tag (plist-get (plist-get tt :op) :tags)))
                     board-threads)))
     (with-httpd-buffer proc "application/rss+xml"
       (insert (render-rss-feed filtered (format "goatse.world - Tag: %s" tag))))))
@@ -315,7 +221,12 @@ x  |          |         |    |       |         |x
   (with-httpd-buffer proc "application/rss+xml"
     (insert (render-rss-feed board-threads "goatse.world main feed"))))
 
+;; /thread/rss kept for backward compat
 (defun httpd/thread/rss (proc path query args)
+  (let ((id (cadr (assoc "id" query))))
+    (httpd-redirect proc (if id (format "/threads/rss?id=%s" id) "/rss"))))
+
+(defun httpd/threads/rss (proc path query args)
   (let* ((id (string-to-number (or (cadr (assoc "id" query)) "0")))
          (tt (cl-find-if (lambda (x) (= (plist-get (plist-get x :op) :id) id)) board-threads)))
     (if tt
@@ -354,51 +265,53 @@ x  |          |         |    |       |         |x
 (defun httpd/admin/rename-tag-global (proc path query args) (board-admin-rename-tag-global-route proc path query args))
 (defun httpd/admin/edit (proc path query args) (board-admin-edit-route proc path query args))
 (defun httpd/admin/update (proc path query args) (board-admin-update-route proc path query args))
+(defun httpd/admin/lock (proc path query args) (board-admin-lock-route proc path query args))
+(defun httpd/admin/sticky (proc path query args) (board-admin-sticky-route proc path query args))
+(defun httpd/admin/deletebyip (proc path query args) (board-admin-deletebyip-route proc path query args))
+(defun httpd/admin/stats (proc path query args) (board-admin-stats-route proc path query args))
 
 (defun httpd/tags (proc path query args)
   (board-tags-route proc path query args))
 
-(defun httpd/login (proc path query args) 
-  (with-httpd-buffer proc "text/html" (insert-board-ascii) (insert "<h2>Admin</h2><form method='POST' action='/admin/auth'><input type='password' name='pwd'><input type='submit'></form>")))
+(defun httpd/login (proc path query args)
+  (let ((failed (cadr (assoc "error" query))))
+    (with-httpd-buffer proc "text/html"
+      (insert (render-header "Admin Login" nil))
+      (insert-board-ascii)
+      (insert (format "<div style='text-align:center; margin-top:30px;'>
+                         <h2>Admin</h2>
+                         %s
+                         <form method='POST' action='/admin/auth'>
+                           <input type='password' name='pwd' placeholder='password'
+                                  style='display:block; margin:8px auto; width:180px;'><br>
+                           <input type='submit' value='Login'>
+                         </form>
+                       </div>"
+                      (if failed "<p style='color:#f44;'>Wrong password.</p>" "")))
+      (insert (render-footer)))))
 
-(defun httpd/admin/auth (proc path query args) 
-  (let ((pwd (board-get-arg args "pwd"))) 
-    (if (string= pwd board-admin-password) 
-        (progn (httpd-send-header proc "text/html" 302 :Location "/home" :Set-Cookie (format "session=%s; Path=/; HttpOnly" board-admin-password)) (process-send-string proc "")) 
-      (httpd-error proc 403))))
+(defun httpd/admin/auth (proc path query args)
+  (let ((pwd (board-get-arg args "pwd")))
+    (if (string= pwd board-admin-password)
+        (progn
+          (httpd-send-header proc "text/html" 302
+                             :Location "/home"
+                             :Set-Cookie (format "session=%s; Path=/; HttpOnly"
+                                                 (secure-hash 'sha256 board-admin-password)))
+          (process-send-string proc ""))
+      (httpd-redirect proc "/login?error=1"))))
 
 ;; --- POSTING LOGIC ---
-;; (defun httpd/post-entry (proc path query args)
-;;   (let* ((ip (board-get-ip proc args))
-;;          (admin (board-is-admin-p proc args)))
-;;     (if (or admin (board-check-rate-limit ip (1+ board-post-count)))
-;;         (board-handle-post proc args)
-;;     (httpd/home proc "/home" '(("error" "ratelimit")) args))))
-
-;; (defun httpd/post-entry (proc path query args)
-;;   (let* ((ip (board-get-ip proc args))
-;;          (admin (board-is-admin-p proc args))
-;;          (resto (board-get-arg args "resto"))
-;;          (redirect-url (if (and resto (not (string-empty-p resto)))
-;;                            (format "/thread?id=%s&error=ratelimit" resto)
-;;                          "/home?error=ratelimit")))
-;;     (if (or admin (board-check-rate-limit ip (1+ board-post-count)))
-;;         (board-handle-post proc args)
-;;       (progn
-;;         (httpd-send-header proc "text/html" 302 :Location redirect-url)
-;;         (process-send-string proc "")))))
-
 (defun httpd/post-entry (proc path query args)
   (let* ((ip (board-get-ip proc args))
          (admin (board-is-admin-p proc args))
-         (resto (board-get-arg args "resto")) 
+         (resto (board-get-arg args "resto"))
          (fail-url (if (and resto (not (string-empty-p resto)))
-                       (format "/thread?id=%s&error=ratelimit" resto)
+                       (format "/threads/%s?error=ratelimit" resto)
                      "/home?error=ratelimit")))
-    
     (if (or admin (board-check-rate-limit ip (1+ board-post-count)))
         (board-handle-post proc args)
-       (progn
+      (progn
         (httpd-send-header proc "text/html" 302 :Location fail-url)
         (process-send-string proc "")))))
 

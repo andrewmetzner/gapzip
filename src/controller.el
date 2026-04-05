@@ -27,24 +27,38 @@
       direct-ip)))
 
 (defun board-is-admin-p (proc args)
-  "Checks if the current session cookie matches the admin password."
-  (let ((cookie (cadr (assoc "Cookie" args)))) 
-    (and cookie (string-match (format "session=%s" (regexp-quote board-admin-password)) cookie))))
+  "Checks if the current session cookie matches the SHA-256 hash of the admin password."
+  (let ((cookie (cadr (assoc "Cookie" args))))
+    (and cookie (string-match (format "session=%s" (regexp-quote (secure-hash 'sha256 board-admin-password))) cookie))))
 
 ;; --- ADMIN ACTIONS ---
 
 (defun board-admin-dashboard-route (proc path query args)
-  (if (not (board-is-admin-p proc args)) 
-      (httpd-error proc 403) 
-    (with-httpd-buffer proc "text/html" 
-      (insert (render-header "Admin Dashboard" t)) 
-      (insert-board-ascii) 
-      (insert "<h2>Banned IPs</h2><ul>")
+  (if (not (board-is-admin-p proc args))
+      (httpd-error proc 403)
+    (with-httpd-buffer proc "text/html"
+      (insert (render-header "Admin Dashboard" t))
+      (insert-board-ascii)
+      (insert "<div style='font-family:monospace; margin-bottom:15px;'>
+                 <a href='/admin/stats'>[Stats]</a>
+                 <a href='/admin/log' style='margin-left:10px;'>[Traffic Log]</a>
+                 <a href='/home' style='margin-left:10px;'>[Back to Board]</a>
+               </div>")
+      (insert "<h2>Banned IPs</h2>")
+      (insert "<table style='width:100%%; font-family:monospace; border-collapse:collapse;'>
+                 <tr><th style='text-align:left; color:#888;'>IP</th>
+                     <th style='text-align:left; color:#888;'>Actions</th></tr>")
       (if board-banned-ips
           (dolist (ip board-banned-ips)
-            (insert (format "<li>%s <a href='/admin/unban?ip=%s'>[Unban]</a></li>" ip ip)))
-        (insert "<li>No bans found.</li>"))
-      (insert "</ul><hr><a href='/home'>Back to Home</a></body></html>"))))
+            (insert (format "<tr><td style='padding:4px 8px;'>%s</td>
+                                 <td><a href='/admin/unban?ip=%s'>[Unban]</a>
+                                     <a href='/admin/deletebyip?ip=%s' style='margin-left:8px; color:#f44;'
+                                        onclick='return confirm(\"Delete all posts from %s?\")'>
+                                       [Delete All Posts]</a></td></tr>"
+                            ip ip ip ip)))
+        (insert "<tr><td colspan='2' style='padding:4px 8px; color:#666;'>No bans.</td></tr>"))
+      (insert "</table>")
+      (insert (render-footer)))))
 
 (defun board-admin-delete-route (proc path query args)
   (if (not (board-is-admin-p proc args)) 
@@ -121,21 +135,26 @@
           (insert "<br><hr><a href='/home'>Cancel</a></body></html>"))))))
 
 (defun board-admin-update-route (proc path query args)
-  (if (not (board-is-admin-p proc args)) 
+  (if (not (board-is-admin-p proc args))
       (httpd-error proc 403)
     (let* ((id (string-to-number (or (board-get-arg args "id") "0")))
            (new-name (board-get-arg args "name"))
            (new-subj (board-get-arg args "subject"))
-           (new-body (board-get-arg args "comment")))
+           (new-body (board-get-arg args "comment"))
+           (tags-raw (board-get-arg args "tags"))
+           (new-tags (when (and tags-raw (not (string-empty-p (string-trim tags-raw))))
+                       (mapcar (lambda (s) (downcase (string-trim s)))
+                               (split-string tags-raw "," t)))))
       (when (and (> id 0) new-body)
         (let ((found nil))
           (dolist (tt board-threads)
             (let ((op (plist-get tt :op)))
               (if (= (plist-get op :id) id)
-                  (progn 
+                  (progn
                     (plist-put op :name new-name)
                     (plist-put op :subject new-subj)
                     (plist-put op :body new-body)
+                    (when new-tags (plist-put op :tags new-tags))
                     (setq found t))
                 (dolist (r (plist-get tt :replies))
                   (when (= (plist-get r :id) id)
@@ -151,29 +170,37 @@
 (defun board-handle-post (proc args)
   (let ((ip (board-get-ip proc args)))
     (cond
-     ((member ip board-banned-ips)      
+     ((member ip board-banned-ips)
       (with-httpd-buffer proc "text/html"
         (insert "<html><body style='background:black;color:red;text-align:center;padding-top:50px;font-family:sans-serif;'>
                  <h1>BANNED!</h1>
                  <p style='font-size:1.5em;'>Your IP (" ip ") has been restricted.</p>
                  </body></html>")))
-     ((not (board-check-rate-limit ip (1+ board-post-count)))
-      (with-httpd-buffer proc "text/html"
-        (insert (render-rate-limit-box ip 60))))
-     (t 
-      (let* ((comment (board-get-arg args "comment")) 
-             (subj (board-get-arg args "subject")) 
-             (tags-raw (board-get-arg args "tags")) 
+     (t
+      (let* ((comment (board-get-arg args "comment"))
+             (subj (board-get-arg args "subject"))
+             (tags-raw (board-get-arg args "tags"))
              (name-raw (or (board-get-arg args "name") "Anonymous"))
-             (resto (board-get-arg args "resto")) 
-             (is-reply (and resto (not (string-empty-p (string-trim resto))))))
-        
+             (resto (board-get-arg args "resto"))
+             (is-reply (and resto (not (string-empty-p (string-trim resto)))))
+             (is-sage (string= (or (board-get-arg args "sage") "") "1")))
+
+        ;; Refuse replies to locked threads
+        (when is-reply
+          (let* ((tid (string-to-number (string-trim resto)))
+                 (thread (cl-find-if (lambda (tt) (= (plist-get (plist-get tt :op) :id) tid)) board-threads)))
+            (when (and thread (plist-get thread :locked))
+              (httpd-send-header proc "text/html" 302
+                                 :Location (format "/threads/%s?error=locked" (string-trim resto)))
+              (process-send-string proc "")
+              (cl-return-from board-handle-post nil))))
+
         (when (and comment (not (string-empty-p (string-trim comment))))
           (setq board-post-count (1+ board-post-count))
           (let* ((nt (generate-tripcode name-raw))
-                 (tags (if is-reply nil 
-                         (if (or (null tags-raw) (string-empty-p (string-trim tags-raw))) 
-                             '("shitpost") 
+                 (tags (if is-reply nil
+                         (if (or (null tags-raw) (string-empty-p (string-trim tags-raw)))
+                             '("shitpost")
                            (mapcar (lambda (s) (downcase (string-trim s))) (split-string tags-raw "," t)))))
                  (new (list :id board-post-count
                             :name (car nt)
@@ -183,60 +210,167 @@
                             :timestamp (format-time-string "%Y-%m-%d %H:%M:%S")
                             :ip ip
                             :tags tags)))
-            
+
             (if is-reply
-                (let* ((tid (string-to-number resto))
+                (let* ((tid (string-to-number (string-trim resto)))
                        (thread (cl-find-if (lambda (tt) (= (plist-get (plist-get tt :op) :id) tid)) board-threads)))
                   (when thread
                     (plist-put thread :replies (append (plist-get thread :replies) (list new)))
-                    ;; Bump thread to top
-                    (setq board-threads (cons thread (cl-remove thread board-threads :test 'equal)))))
+                    (unless is-sage
+                      (setq board-threads (cons thread (cl-remove thread board-threads :test 'equal))))))
               (push (list :op new :replies nil) board-threads))
-            
+
             (board-save)))
 
-        (let ((target (if is-reply (format "/thread?id=%s" resto) "/home")))
-          (httpd-send-header proc "text/html" 302 
-                             :Location target 
-                             :Set-Cookie (format "preferred_name=%s; Path=/; Max-Age=31536000" 
+        (let ((target (if is-reply (format "/threads/%s" (string-trim resto)) "/home")))
+          (httpd-send-header proc "text/html" 302
+                             :Location target
+                             :Set-Cookie (format "preferred_name=%s; Path=/; Max-Age=31536000"
                                                  (url-hexify-string name-raw)))
           (process-send-string proc "")))))))
 
 (defun board-tags-route (proc path query args)
-  (let* ((tag-raw (cadr (assoc "name" query)))
-         (tag-name (if tag-raw (url-unhex-string tag-raw) ""))
-         (is-admin (board-is-admin-p proc args)))
+  (let* ((path-parts (cl-remove-if #'string-empty-p (split-string path "/")))
+         ;; Extract tag from URL path: /tags/NAME → NAME
+         (tag-encoded (nth 1 path-parts))
+         (tag-name (if tag-encoded
+                       (decode-coding-string (url-unhex-string tag-encoded) 'utf-8)
+                     ""))
+         (is-admin (board-is-admin-p proc args))
+         (threads-per-page 10)
+         (page-param (cadr (assoc "page" query)))
+         (page (if page-param (string-to-number page-param) 1)))
     (with-httpd-buffer proc "text/html"
-      (insert (render-header (if (string-empty-p tag-name) "all tags" (format "Tag: %s" tag-name)) is-admin))
-      
+      (insert (render-header (if (string-empty-p tag-name) "all tags" (format "Tag: %s" tag-name))
+                             is-admin
+                             (when (not (string-empty-p tag-name))
+                               (format "/tags/rss?name=%s" (url-hexify-string tag-name)))))
       (insert-board-ascii)
-      
+
       (if (string-empty-p tag-name)
           (let ((all-tags (get-all-board-tags board-threads)))
             (insert "<div><a href='/home' class='nav-link'>[Back]</a></div><hr>")
             (insert (render-tag-index-page all-tags is-admin)))
-        
-        (let ((filtered (cl-remove-if-not 
-                         (lambda (tt) (member (downcase tag-name) (plist-get (plist-get tt :op) :tags)))
-                         board-threads)))
-          (insert "<div><a href='/' class='nav-link'>[Back]</a></div><hr>")
-          (insert (format "<h2>tag: %s</h2>" tag-name))
-          
-          (when is-admin
-            (insert (format "
+
+        (let* ((filtered (cl-remove-if-not
+                          (lambda (tt) (member (downcase tag-name) (plist-get (plist-get tt :op) :tags)))
+                          board-threads))
+               (total-threads (length filtered))
+               (total-pages (ceiling (/ (float (max 1 total-threads)) threads-per-page)))
+               (max-pages (min total-pages 10)))
+          (setq page (max 1 (min page max-pages)))
+          (let* ((start (* (1- page) threads-per-page))
+                 (end (min total-threads (+ start threads-per-page)))
+                 (page-threads (when filtered (cl-subseq filtered start end))))
+            (insert "<div><a href='/home' class='nav-link'>[Back]</a></div><hr>")
+            (insert (format "<h2>tag: %s</h2>" (board-escape-html tag-name)))
+
+            (when is-admin
+              (insert (format "
               <div class='admin-rename-box' style='background:#1a1a1a; padding:10px; border:1px solid #444; margin-bottom:20px;'>
                 <form method='POST' action='/admin/rename-tag-global'>
                   <input type='hidden' name='old' value='%s'>
-                  <b>Admin:</b> Rename this tag globally: 
+                  <b>Admin:</b> Rename this tag globally:
                   <input name='new' placeholder='new name' style='background:#000; color:#fff; border:1px solid #333;'>
                   <input type='submit' value='Apply'>
                 </form>
-              </div>" tag-name)))
+              </div>" (board-escape-html tag-name))))
 
-          (if filtered
-              (dolist (tt filtered) (insert (render-thread-html tt nil is-admin)))
-            (insert "<p class='greentext'>No posts found with this tag.</p>"))))
-      
+            (if page-threads
+                (dolist (tt page-threads) (insert (render-thread-html tt nil is-admin)))
+              (insert "<p class='greentext'>No posts found with this tag.</p>"))
+
+            (when (> max-pages 1)
+              (insert "<div class='pagination'>Pages: ")
+              (dotimes (i max-pages)
+                (let ((p (1+ i)))
+                  (insert (if (= p page)
+                              (format "<b>[%d]</b> " p)
+                            (format "<a href='/tags/%s?page=%d'>[%d]</a> "
+                                    (url-hexify-string tag-name) p p)))))
+              (insert "</div>")))))
+
       (insert (render-footer)))))
+
+;; --- THREAD LOCK / STICKY ---
+
+(defun board-admin-lock-route (proc path query args)
+  (if (not (board-is-admin-p proc args))
+      (httpd-error proc 403)
+    (let* ((id (string-to-number (or (cadr (assoc "id" query)) "0")))
+           (thread (cl-find-if (lambda (tt) (= (plist-get (plist-get tt :op) :id) id)) board-threads)))
+      (when thread
+        (plist-put thread :locked (not (plist-get thread :locked)))
+        (board-save))
+      (httpd-redirect proc (format "/threads/%d" id)))))
+
+(defun board-admin-sticky-route (proc path query args)
+  (if (not (board-is-admin-p proc args))
+      (httpd-error proc 403)
+    (let* ((id (string-to-number (or (cadr (assoc "id" query)) "0")))
+           (thread (cl-find-if (lambda (tt) (= (plist-get (plist-get tt :op) :id) id)) board-threads)))
+      (when thread
+        (plist-put thread :sticky (not (plist-get thread :sticky)))
+        (board-save))
+      (httpd-redirect proc "/home"))))
+
+;; --- BULK DELETE BY IP ---
+
+(defun board-admin-deletebyip-route (proc path query args)
+  (if (not (board-is-admin-p proc args))
+      (httpd-error proc 403)
+    (let ((ip (cadr (assoc "ip" query))))
+      (when ip
+        ;; Remove threads where OP is from this IP
+        (setq board-threads
+              (cl-remove-if (lambda (tt) (string= (plist-get (plist-get tt :op) :ip) ip))
+                            board-threads))
+        ;; Remove replies from this IP in remaining threads
+        (dolist (tt board-threads)
+          (plist-put tt :replies
+                     (cl-remove-if (lambda (r) (string= (plist-get r :ip) ip))
+                                   (plist-get tt :replies))))
+        (board-save))
+      (httpd-redirect proc "/admin/dashboard"))))
+
+;; --- STATS PAGE ---
+
+(defun board-admin-stats-route (proc path query args)
+  (if (not (board-is-admin-p proc args))
+      (httpd-error proc 403)
+    (let* ((total-threads (length board-threads))
+           (total-replies (apply #'+ (mapcar (lambda (tt) (length (plist-get tt :replies))) board-threads)))
+           (total-posts (+ total-threads total-replies))
+           (now (float-time))
+           (one-hour-ago (- now 3600))
+           (posts-last-hour (length (cl-remove-if (lambda (e) (< (nth 1 e) one-hour-ago)) board-post-log)))
+           (all-tags (get-all-board-tags board-threads))
+           (tag-counts (mapcar (lambda (tag)
+                                 (cons tag (length (cl-remove-if-not
+                                                    (lambda (tt) (member tag (plist-get (plist-get tt :op) :tags)))
+                                                    board-threads))))
+                               all-tags))
+           (sorted-tags (sort tag-counts (lambda (a b) (> (cdr a) (cdr b))))))
+      (with-httpd-buffer proc "text/html"
+        (insert (render-header "Board Stats" t))
+        (insert-board-ascii)
+        (insert "<h2>Board Statistics</h2>")
+        (insert (format "<div class='thread-container' style='padding:15px;'>
+          <table style='width:100%%; font-family:monospace; border-collapse:collapse;'>
+            <tr><td style='padding:4px 10px; color:#888;'>Total threads</td><td><b>%d</b></td></tr>
+            <tr><td style='padding:4px 10px; color:#888;'>Total replies</td><td><b>%d</b></td></tr>
+            <tr><td style='padding:4px 10px; color:#888;'>Total posts</td><td><b>%d</b></td></tr>
+            <tr><td style='padding:4px 10px; color:#888;'>Posts (last hour)</td><td><b>%d</b></td></tr>
+            <tr><td style='padding:4px 10px; color:#888;'>Unique tags</td><td><b>%d</b></td></tr>
+            <tr><td style='padding:4px 10px; color:#888;'>Banned IPs</td><td><b>%d</b></td></tr>
+          </table></div>"
+                        total-threads total-replies total-posts posts-last-hour
+                        (length all-tags) (length board-banned-ips)))
+        (insert "<h3>Top Tags</h3><div class='thread-container' style='padding:15px;'>")
+        (dolist (tc (seq-take sorted-tags 20))
+          (insert (format "<a href='/tags/%s' class='tag'>%s</a> <span style='color:#666;'>(%d)</span>  "
+                          (url-hexify-string (car tc)) (car tc) (cdr tc))))
+        (insert "</div>")
+        (insert (render-footer))))))
 
 (provide 'controller)
