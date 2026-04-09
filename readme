@@ -1,1 +1,3 @@
 goatse.world emacs lisp backend
+
+emacs --batch --load main.el

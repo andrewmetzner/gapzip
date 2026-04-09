@@ -187,10 +187,13 @@
                              op-id (if is-sticky "un" "") op-id (if is-locked "un" ""))
                    ""))
        (concat
-        (when (or is-sticky is-locked)
-          (format "<div style='font-size:0.8em; margin-bottom:2px;'>%s%s</div>"
-                  (if is-sticky "<span style='color:#ff0; font-weight:bold;'>[STICKY] </span>" "")
-                  (if is-locked "<span style='color:#f44; font-weight:bold;'>[LOCKED]</span>" "")))))
+        (format "<div style='font-size:0.8em; margin-bottom:2px;'>%s%s%s</div>"
+                (if is-sticky "<span style='color:#ff0; font-weight:bold;'>[STICKY] </span>" "")
+                (if is-locked "<span style='color:#f44; font-weight:bold;'>[LOCKED]</span>" "")
+                (if is-admin
+                    (format " <a href='/admin/sticky?id=%d' class='admin-edit'>[%s sticky]</a> <a href='/admin/lock?id=%d' class='admin-edit'>[%s lock]</a>"
+                            op-id (if is-sticky "un" "") op-id (if is-locked "un" ""))
+                  ""))))
      "<div class='thread-container'>"
      (render-post-html op t full-view thread is-admin)
      (mapconcat (lambda (r) (render-post-html r nil full-view thread is-admin)) shown "")

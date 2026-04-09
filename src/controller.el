@@ -298,21 +298,23 @@
   (if (not (board-is-admin-p proc args))
       (httpd-error proc 403)
     (let* ((id (string-to-number (or (cadr (assoc "id" query)) "0")))
-           (thread (cl-find-if (lambda (tt) (= (plist-get (plist-get tt :op) :id) id)) board-threads)))
+           (thread (cl-find-if (lambda (tt) (= (plist-get (plist-get tt :op) :id) id)) board-threads))
+           (back (or (cadr (assoc "Referer" args)) (format "/threads/%d" id))))
       (when thread
         (plist-put thread :locked (not (plist-get thread :locked)))
         (board-save))
-      (httpd-redirect proc (format "/threads/%d" id)))))
+      (httpd-redirect proc back))))
 
 (defun board-admin-sticky-route (proc path query args)
   (if (not (board-is-admin-p proc args))
       (httpd-error proc 403)
     (let* ((id (string-to-number (or (cadr (assoc "id" query)) "0")))
-           (thread (cl-find-if (lambda (tt) (= (plist-get (plist-get tt :op) :id) id)) board-threads)))
+           (thread (cl-find-if (lambda (tt) (= (plist-get (plist-get tt :op) :id) id)) board-threads))
+           (back (or (cadr (assoc "Referer" args)) "/home")))
       (when thread
         (plist-put thread :sticky (not (plist-get thread :sticky)))
         (board-save))
-      (httpd-redirect proc "/home"))))
+      (httpd-redirect proc back))))
 
 ;; --- BULK DELETE BY IP ---
 
